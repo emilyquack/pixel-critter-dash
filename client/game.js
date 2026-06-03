@@ -12,8 +12,11 @@ const MAX_SPEED_BOOST = 260;
 const SPEED_RAMP = 0.012;
 const LOCAL_PLAYER_SCALE = 2.35;
 const REMOTE_PLAYER_SCALE = 1.95;
-const JUMP_DURATION = 0.72;
+const JUMP_DURATION = 0.92;
 const SLIDE_DURATION = 0.58;
+const JUMP_SAFE_REMAINING = 0.03;
+const JUMP_OBSTACLE_FRONT_WINDOW = 34;
+const JUMP_OBSTACLE_BACK_WINDOW = -50;
 
 const ANIMALS = {
   bunny: { label: 'Ribbon Bunny', body: '#fff3f7', belly: '#ffd1df', ear: '#ff9fbd', cheek: '#ff8fb4', accent: '#7ed7ff' },
@@ -479,11 +482,13 @@ function checkCollisions() {
   if (hitCooldown > 0) return;
   for (const obs of track) {
     const z = obs.distance - local.distance;
-    if (z < -40) continue;
-    if (z > 42) break;
-    if (Math.abs(obs.lane - local.lane) > 0.31) continue;
     const action = OBSTACLES[obs.type].action;
-    const safe = action === 'jump' ? local.jumpTime > 0.10 : action === 'slide' ? local.slideTime > 0.05 : false;
+    const frontWindow = action === 'jump' ? JUMP_OBSTACLE_FRONT_WINDOW : 42;
+    const backWindow = action === 'jump' ? JUMP_OBSTACLE_BACK_WINDOW : -40;
+    if (z < backWindow) continue;
+    if (z > frontWindow) break;
+    if (Math.abs(obs.lane - local.lane) > 0.31) continue;
+    const safe = action === 'jump' ? local.jumpTime > JUMP_SAFE_REMAINING : action === 'slide' ? local.slideTime > 0.05 : false;
     if (!safe) {
       if (local.shield > 0) {
         local.shield = 0;
@@ -789,10 +794,12 @@ function drawCritterFace(kind, animal, blink) {
     fill('#ffffff'); rect(-8, -19, 2, 2, 1); rect(6, -19, 2, 2, 1);
   }
 
-  fill(animal.cheek || '#ff9fc0'); rect(-15, -12, 6, 3, 2); rect(9, -12, 6, 3, 2);
+  fill(animal.cheek || '#ff9fc0'); rect(-15, -12, 6, 4, 2); rect(9, -12, 6, 4, 2);
   fill(kind === 'frog' ? '#4c8f3c' : '#2f2a45');
   rect(-2, -13, 4, 3, 1);
-  rect(-5, -8, 4, 2, 1); rect(1, -8, 4, 2, 1);
+  // Happy pixel smile instead of a neutral ._. mouth.
+  rect(-5, -9, 2, 2, 1); rect(-3, -7, 2, 2, 1); rect(-1, -6, 2, 2, 1);
+  rect(1, -7, 2, 2, 1); rect(3, -9, 2, 2, 1);
 
   if (kind === 'cat' || kind === 'fox') {
     stroke('#7a5a58'); strokeWeight(1); line(-13, -12, -20, -14); line(-13, -10, -21, -9); line(13, -12, 20, -14); line(13, -10, 21, -9); noStroke();
