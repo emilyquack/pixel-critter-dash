@@ -8,12 +8,12 @@ const LANE_COUNT = 3;
 const PLAYER_Y_RATIO = 0.76;
 
 const ANIMALS = {
-  bunny: { label: 'Bunny', body: '#fff3f7', belly: '#ffd1df', ear: '#ff9fbd', accent: '#7ed7ff' },
-  raccoon: { label: 'Raccoon', body: '#8a879a', belly: '#d8d5dc', ear: '#5b5868', accent: '#ffd36b' },
-  cat: { label: 'Cat', body: '#ffd68c', belly: '#fff2c0', ear: '#ff9f8f', accent: '#9ee8b3' },
-  fox: { label: 'Fox', body: '#ff9a4f', belly: '#ffe5bd', ear: '#d94f38', accent: '#88d8ff' },
-  panda: { label: 'Panda', body: '#f7f5ea', belly: '#ffffff', ear: '#333047', accent: '#ff9cc7' },
-  frog: { label: 'Frog', body: '#83d85a', belly: '#d8ff95', ear: '#58ae45', accent: '#ffd66e' }
+  bunny: { label: 'Ribbon Bunny', body: '#fff3f7', belly: '#ffd1df', ear: '#ff9fbd', cheek: '#ff8fb4', accent: '#7ed7ff' },
+  raccoon: { label: 'Bandit Raccoon', body: '#9b98aa', belly: '#ebe8ef', ear: '#625f72', cheek: '#ff9fc0', accent: '#ffd36b' },
+  cat: { label: 'Cupcake Cat', body: '#ffd68c', belly: '#fff2c0', ear: '#ff9f8f', cheek: '#ff8fae', accent: '#9ee8b3' },
+  fox: { label: 'Marshmallow Fox', body: '#ff9a4f', belly: '#ffe5bd', ear: '#d94f38', cheek: '#ffb0a2', accent: '#88d8ff' },
+  panda: { label: 'Mochi Panda', body: '#f7f5ea', belly: '#ffffff', ear: '#333047', cheek: '#ff9cc7', accent: '#ff9cc7' },
+  frog: { label: 'Sprout Frog', body: '#83d85a', belly: '#d8ff95', ear: '#58ae45', cheek: '#ffb0be', accent: '#ffd66e' }
 };
 
 const OBSTACLES = {
@@ -125,6 +125,11 @@ function bindUI() {
   ui.roomCodeLabel = document.getElementById('roomCodeLabel');
   ui.copyInviteBtn = document.getElementById('copyInviteBtn');
   ui.musicToggle = document.getElementById('musicToggle');
+  ui.raceOverPanel = document.getElementById('raceOverPanel');
+  ui.raceOverTitle = document.getElementById('raceOverTitle');
+  ui.raceOverSummary = document.getElementById('raceOverSummary');
+  ui.afterRoundRestartBtn = document.getElementById('afterRoundRestartBtn');
+  ui.raceOverHint = document.getElementById('raceOverHint');
   ui.lobbyPlayers = document.getElementById('lobbyPlayers');
   ui.hostTools = document.getElementById('hostTools');
 
@@ -160,6 +165,7 @@ function bindUI() {
   });
   ui.startRaceBtn.addEventListener('click', () => send({ type: 'startRace' }));
   ui.restartRaceBtn.addEventListener('click', () => send({ type: 'restartRace' }));
+  ui.afterRoundRestartBtn.addEventListener('click', restartAfterRound);
   ui.copyInviteBtn.addEventListener('click', copyInviteLink);
   ui.musicToggle.addEventListener('click', toggleMusic);
   ui.animalSelect.addEventListener('change', () => {
@@ -181,6 +187,7 @@ function bindUI() {
   window.addEventListener('touchstart', onTouchStart, { passive: true });
   window.addEventListener('touchend', onTouchEnd, { passive: true });
   updateLobbyUI();
+  updateRoundEndUI();
   updateMusicButton();
 }
 
@@ -335,6 +342,48 @@ function resetRace(seed) {
   collectedFruit.clear();
   hitCooldown = 0;
   buildTrack(roomSeed);
+  updateRoundEndUI();
+}
+
+function restartAfterRound() {
+  if (roomCode === 'SOLO' || !roomCode) {
+    roomCode = 'SOLO';
+    meId = meId || 'solo-' + Math.floor(Math.random() * 9999);
+    local.id = meId;
+    hostId = meId;
+    roomState = 'racing';
+    resetRace('SOLO-' + Date.now());
+    updateLobbyUI();
+    playSparkle([392.0, 523.25, 659.25], 0.055);
+    toast('Fresh solo round! 🐾');
+    return;
+  }
+
+  if (hostId === meId) {
+    send({ type: 'startRace' });
+    toast('Starting a fresh round for the room!');
+  } else {
+    toast('Only the host can restart the multiplayer round.');
+  }
+}
+
+function updateRoundEndUI() {
+  if (!ui.raceOverPanel) return;
+  const shouldShow = roomState === 'racing' && local.alive === false;
+  ui.raceOverPanel.classList.toggle('hidden', !shouldShow);
+  if (!shouldShow) return;
+
+  const isSolo = roomCode === 'SOLO' || !roomCode;
+  const isHost = hostId === meId;
+  ui.raceOverTitle.textContent = 'Critter bonk!';
+  ui.raceOverSummary.textContent = `Score ${Math.floor(local.score || 0)} • Distance ${Math.floor(local.distance || 0)}m`;
+  ui.afterRoundRestartBtn.disabled = !isSolo && !isHost;
+  ui.afterRoundRestartBtn.textContent = isSolo ? 'Restart solo round' : isHost ? 'Restart room now' : 'Waiting for host';
+  ui.raceOverHint.textContent = isSolo
+    ? 'Tap restart to dash again right away.'
+    : isHost
+      ? 'You are host — restart sends everyone into a fresh round.'
+      : 'Ask the host to restart when everyone is ready.';
 }
 
 function buildTrack(seed) {
@@ -604,43 +653,162 @@ function laneX(lane, y) {
 }
 
 function drawAnimal(x, y, s, p, isMe) {
-  const animal = ANIMALS[p.animal] || ANIMALS.bunny;
-  const bob = p.alive === false ? 0 : Math.sin((millis() / 1000) * 12 + (p.id || '').length) * 3;
+  const animalKey = ANIMALS[p.animal] ? p.animal : 'bunny';
+  const animal = ANIMALS[animalKey];
+  const t = millis() / 1000;
+  const bob = p.alive === false ? 0 : Math.sin(t * 12 + (p.id || '').length) * 3;
+  const wiggle = p.alive === false ? 0 : Math.sin(t * 9 + (p.id || '').length) * 1.4;
   const sliding = p.slideTime > 0;
+  const blink = p.alive !== false && Math.sin(t * 3.1 + (p.id || '').length) > 0.92;
+
   push(); translate(x, y + bob); scale(s); noStroke();
-  if (!isMe) { fill(255, 255, 255, 90); ellipse(0, 11, 38, 10); }
-  else { fill('#ffffffaa'); ellipse(0, 14, 48, 12); }
-  if (p.alive === false) rotate(Math.sin(local.wobble) * 0.25);
+  if (!isMe) { fill(255, 255, 255, 90); ellipse(0, 13, 41, 10); }
+  else { fill('#ffffffb8'); ellipse(0, 15, 52, 13); }
+  if (p.alive === false) rotate(Math.sin(p.wobble || local.wobble) * 0.25);
   if (sliding) scale(1.18, 0.72);
 
-  fill(animal.ear);
-  if (p.animal === 'bunny') { rect(-12, -34, 7, 19, 4); rect(6, -34, 7, 19, 4); }
-  else if (p.animal === 'cat' || p.animal === 'fox') { triangle(-17, -17, -9, -32, -3, -17); triangle(17, -17, 9, -32, 3, -17); }
-  else { ellipse(-14, -18, 12, 13); ellipse(14, -18, 12, 13); }
+  drawCritterTail(animalKey, animal, wiggle);
+  drawCritterEars(animalKey, animal, wiggle);
+  drawCritterBody(animalKey, animal, wiggle);
+  drawCritterFace(animalKey, animal, blink);
+  drawCritterAccessory(animalKey, animal, isMe, wiggle);
 
-  fill(animal.body); rect(-17, -20, 34, 32, 8);
-  fill(animal.belly); rect(-9, -7, 18, 17, 6);
-  fill(animal.body); rect(-22, -3, 8, 15, 3); rect(14, -3, 8, 15, 3);
-  fill('#2f2a45'); rect(-8, -10, 4, 4, 1); rect(5, -10, 4, 4, 1);
-  fill('#ff7aa8'); rect(-2, -4, 4, 3, 1);
-  fill('#2f2a45'); rect(-5, 1, 10, 2, 1);
-  fill(animal.accent); rect(11, -22, 10, 8, 2);
-
-  fill(animal.body); rect(-13, 10, 9, 12, 3); rect(4, 10, 9, 12, 3);
-  if (p.shield > 0) { noFill(); stroke('#ffdf74'); strokeWeight(2); ellipse(0, -3, 46, 54); noStroke(); }
-  if (isMe) { fill('#ffdf74'); triangle(-5, -45, 5, -45, 0, -54); }
+  if (p.shield > 0) {
+    noFill(); stroke('#ffdf74'); strokeWeight(2); ellipse(0, -8, 50, 58); noStroke();
+    fill('#fff2a8'); rect(-2, -39, 4, 4, 1); rect(21, -9, 4, 4, 1); rect(-24, -8, 4, 4, 1);
+  }
+  if (isMe) drawTinyCrown();
   pop();
 
-  push(); textAlign(CENTER); textSize(isMe ? 14 : 12); fill('#2f2a45'); stroke('#fff7d8'); strokeWeight(4); text(p.name || 'pal', x, y - 82 * (s / 2.85)); pop();
+  push(); textAlign(CENTER); textSize(isMe ? 14 : 12); fill('#2f2a45'); stroke('#fff7d8'); strokeWeight(4); text(p.name || 'pal', x, y - 86 * (s / 2.85)); pop();
+}
+
+function drawCritterTail(kind, animal, wiggle) {
+  push(); translate(wiggle * 0.45, 0); noStroke();
+  if (kind === 'fox') {
+    fill(animal.body); triangle(13, -2, 35, -9, 22, 15); rect(18, -8, 13, 18, 6);
+    fill('#fff4dc'); rect(27, -8, 8, 10, 4);
+  } else if (kind === 'raccoon') {
+    fill(animal.ear); rect(13, -1, 24, 11, 6);
+    fill('#ebe8ef'); rect(19, 0, 5, 9, 2); rect(29, 0, 5, 8, 2);
+  } else if (kind === 'cat') {
+    fill(animal.body); rect(14, 2, 20, 7, 4); ellipse(33, 0, 9, 11);
+    fill(animal.accent); rect(31, -2, 5, 4, 2);
+  } else if (kind === 'bunny') {
+    fill('#fffaff'); ellipse(19, 5, 12, 12); fill('#ffdbe8'); ellipse(20, 4, 6, 6);
+  } else if (kind === 'panda') {
+    fill(animal.ear); ellipse(17, 7, 8, 8);
+  } else if (kind === 'frog') {
+    fill('#6cc84f'); rect(14, 4, 10, 6, 3);
+    fill('#f5ff9c'); rect(20, 2, 4, 3, 1);
+  }
+  pop();
+}
+
+function drawCritterEars(kind, animal, wiggle) {
+  push(); noStroke();
+  if (kind === 'bunny') {
+    fill(animal.body); rect(-14 + wiggle * 0.15, -50, 9, 28, 5); rect(6 - wiggle * 0.15, -50, 9, 28, 5);
+    fill(animal.ear); rect(-11 + wiggle * 0.15, -45, 4, 17, 3); rect(9 - wiggle * 0.15, -45, 4, 17, 3);
+  } else if (kind === 'cat' || kind === 'fox') {
+    fill(kind === 'fox' ? animal.ear : animal.body);
+    triangle(-18, -25, -10, -42 - wiggle, -2, -25);
+    triangle(18, -25, 10, -42 + wiggle, 2, -25);
+    fill(kind === 'fox' ? '#ffcfba' : animal.ear);
+    triangle(-14, -26, -10, -35, -5, -26);
+    triangle(14, -26, 10, -35, 5, -26);
+  } else if (kind === 'frog') {
+    fill(animal.body); ellipse(-11, -31, 13, 13); ellipse(11, -31, 13, 13);
+  } else {
+    fill(animal.ear); ellipse(-16, -25, 15, 15); ellipse(16, -25, 15, 15);
+    fill(kind === 'panda' ? '#f7f5ea' : animal.belly); ellipse(-16, -24, 7, 7); ellipse(16, -24, 7, 7);
+  }
+  pop();
+}
+
+function drawCritterBody(kind, animal, wiggle) {
+  fill('#2f2a4520'); rect(-18, -27, 36, 42, 11);
+  fill(animal.body); rect(-15, -7, 30, 28, 9);
+  fill(animal.belly); rect(-9, 1, 18, 17, 7);
+
+  fill(animal.body); rect(-22, -3 + wiggle * 0.15, 9, 14, 4); rect(13, -3 - wiggle * 0.15, 9, 14, 4);
+  fill(animal.belly); rect(-20, 7, 6, 4, 2); rect(14, 7, 6, 4, 2);
+
+  fill(animal.body); rect(-12, 14, 9, 11, 4); rect(3, 14, 9, 11, 4);
+  fill(animal.belly); rect(-11, 21, 8, 4, 2); rect(3, 21, 8, 4, 2);
+
+  fill(animal.body); rect(-19, -31, 38, 29, 10);
+  fill('#ffffff42'); rect(-12, -28, 9, 4, 2);
+
+  if (kind === 'frog') {
+    fill('#5fba47'); rect(-18, -19, 7, 4, 2); rect(11, -19, 7, 4, 2);
+  }
+}
+
+function drawCritterFace(kind, animal, blink) {
+  if (kind === 'raccoon') {
+    fill('#4c4959'); rect(-15, -23, 30, 11, 5);
+    fill(animal.belly); rect(-4, -19, 8, 7, 3);
+  } else if (kind === 'panda') {
+    fill(animal.ear); ellipse(-8, -18, 10, 12); ellipse(8, -18, 10, 12);
+  } else if (kind === 'fox') {
+    fill('#fff1d7'); rect(-10, -17, 20, 11, 5);
+  } else if (kind === 'frog') {
+    fill('#f3ffd5'); ellipse(-11, -31, 8, 8); ellipse(11, -31, 8, 8);
+  }
+
+  fill('#2f2a45');
+  if (blink) {
+    rect(-10, -18, 7, 2, 1); rect(4, -18, 7, 2, 1);
+  } else if (kind === 'frog') {
+    rect(-12, -32, 3, 4, 1); rect(10, -32, 3, 4, 1);
+    fill('#ffffff'); rect(-11, -31, 1, 1, 0); rect(11, -31, 1, 1, 0);
+  } else {
+    rect(-10, -20, 6, 6, 2); rect(4, -20, 6, 6, 2);
+    fill('#ffffff'); rect(-8, -19, 2, 2, 1); rect(6, -19, 2, 2, 1);
+  }
+
+  fill(animal.cheek || '#ff9fc0'); rect(-15, -12, 6, 3, 2); rect(9, -12, 6, 3, 2);
+  fill(kind === 'frog' ? '#4c8f3c' : '#2f2a45');
+  rect(-2, -13, 4, 3, 1);
+  rect(-5, -8, 4, 2, 1); rect(1, -8, 4, 2, 1);
+
+  if (kind === 'cat' || kind === 'fox') {
+    stroke('#7a5a58'); strokeWeight(1); line(-13, -12, -20, -14); line(-13, -10, -21, -9); line(13, -12, 20, -14); line(13, -10, 21, -9); noStroke();
+  }
+}
+
+function drawCritterAccessory(kind, animal, isMe, wiggle) {
+  if (kind === 'bunny' || kind === 'panda') {
+    fill(animal.accent); rect(10, -36 + wiggle * 0.1, 7, 7, 2); triangle(10, -32, 4, -37, 10, -39); triangle(17, -32, 23, -37, 17, -39);
+  } else if (kind === 'cat') {
+    fill(animal.accent); rect(-6, -35, 12, 4, 2); rect(-2, -39, 4, 6, 2);
+  } else if (kind === 'fox') {
+    fill(animal.accent); rect(9, -31, 11, 5, 2); fill('#fff8cf'); rect(17, -33, 3, 3, 1);
+  } else if (kind === 'raccoon') {
+    fill(animal.accent); rect(-4, -34, 8, 6, 2); rect(-2, -38, 4, 4, 1);
+  } else if (kind === 'frog') {
+    fill(animal.accent); rect(-2, -41, 4, 9, 2); fill('#ff9fc0'); ellipse(-6, -41, 7, 6); ellipse(6, -41, 7, 6); ellipse(0, -45, 7, 6);
+  }
+
+  if (!isMe) return;
+  fill('#fff7d8'); rect(-23, -35, 5, 5, 1); rect(20, -32, 4, 4, 1);
+}
+
+function drawTinyCrown() {
+  fill('#ffdf74'); triangle(-7, -44, -2, -54, 2, -44); triangle(-2, -44, 5, -56, 8, -44); rect(-8, -45, 17, 5, 2);
+  fill('#fff2a8'); rect(-1, -50, 3, 3, 1);
 }
 
 function drawRaceOver() {
   if (roomState !== 'racing' || local.alive) return;
-  push(); noStroke(); fill(47, 42, 69, 170); rect(width / 2 - 180, height / 2 - 70, 360, 140, 24); fill('#fff7d8'); textAlign(CENTER); textSize(28); text('Critter bonk!', width / 2, height / 2 - 24); textSize(15); text(`Score ${local.score} • Distance ${Math.floor(local.distance)}`, width / 2, height / 2 + 8); text('Host can restart from the lobby controls', width / 2, height / 2 + 34); pop();
+  const hint = roomCode === 'SOLO' || hostId === meId ? 'Use the restart button to dash again' : 'Waiting for host to restart';
+  push(); noStroke(); fill(47, 42, 69, 150); rect(width / 2 - 180, height / 2 - 70, 360, 140, 24); fill('#fff7d8'); textAlign(CENTER); textSize(28); text('Critter bonk!', width / 2, height / 2 - 24); textSize(15); text(`Score ${local.score} • Distance ${Math.floor(local.distance)}`, width / 2, height / 2 + 8); text(hint, width / 2, height / 2 + 34); pop();
 }
 
 function updateLobbyUI() {
   if (!ui.lobby) return;
+  updateRoundEndUI();
   const inLobby = roomState !== 'racing';
   ui.lobby.classList.toggle('hidden', !inLobby);
   ui.roomInfo.classList.toggle('hidden', !roomCode || roomCode === 'SOLO');

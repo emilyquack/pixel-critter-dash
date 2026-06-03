@@ -38,12 +38,12 @@
           <label>
             Animal
             <select id="animalSelect">
-              <option value="bunny">Bunny</option>
-              <option value="raccoon">Raccoon</option>
-              <option value="cat">Cat</option>
-              <option value="fox">Fox</option>
-              <option value="panda">Panda</option>
-              <option value="frog">Frog</option>
+              <option value="bunny">Ribbon Bunny</option>
+              <option value="raccoon">Bandit Raccoon</option>
+              <option value="cat">Cupcake Cat</option>
+              <option value="fox">Marshmallow Fox</option>
+              <option value="panda">Mochi Panda</option>
+              <option value="frog">Sprout Frog</option>
             </select>
           </label>
           <label>
@@ -72,6 +72,16 @@
           <button id="startRaceBtn" class="primary">Start race</button>
           <button id="restartRaceBtn">Restart</button>
         </div>
+      </div>
+    </section>
+
+    <section id="raceOverPanel" class="race-over-panel hidden" aria-live="polite">
+      <div class="race-over-card">
+        <div class="badge">round over</div>
+        <h2 id="raceOverTitle">Critter bonk!</h2>
+        <p id="raceOverSummary">You dashed through the fruit festival.</p>
+        <button id="afterRoundRestartBtn" class="primary">Restart round</button>
+        <small id="raceOverHint">Try again for a bigger berry combo.</small>
       </div>
     </section>
 

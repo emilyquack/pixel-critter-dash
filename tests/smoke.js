@@ -63,6 +63,7 @@ try {
   assert.equal(page.status, 200, 'index.html should be served');
   const html = await page.text();
   assert.match(html, /Pixel Critter Dash/);
+  assert.match(html, /Restart round/, 'after-round restart button should be served');
 
   const health = await fetch(httpUrl + '/health');
   assert.equal(health.status, 200, 'health endpoint should respond');
