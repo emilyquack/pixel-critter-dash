@@ -47,6 +47,17 @@ let local = makeDefaultPlayer('local', 'Mango Pal', 'bunny');
 let input = { left: false, right: false, up: false, down: false, leftTap: false, rightTap: false, jumpTap: false, slideTap: false };
 let touchStart = null;
 let bgLayer;
+let audio = {
+  ctx: null,
+  master: null,
+  musicGain: null,
+  sfxGain: null,
+  musicOn: false,
+  scheduler: null,
+  nextNoteTime: 0,
+  step: 0,
+  lastBeatFlash: 0
+};
 
 function makeDefaultPlayer(id, name, animal) {
   return {
@@ -113,6 +124,7 @@ function bindUI() {
   ui.roomInfo = document.getElementById('roomInfo');
   ui.roomCodeLabel = document.getElementById('roomCodeLabel');
   ui.copyInviteBtn = document.getElementById('copyInviteBtn');
+  ui.musicToggle = document.getElementById('musicToggle');
   ui.lobbyPlayers = document.getElementById('lobbyPlayers');
   ui.hostTools = document.getElementById('hostTools');
 
@@ -143,11 +155,13 @@ function bindUI() {
     hostId = meId;
     resetRace('SOLO-' + Date.now());
     updateLobbyUI();
+    playSparkle([392.0, 523.25, 659.25], 0.055);
     toast('Solo practice started — dodge the fruit festival chaos!');
   });
   ui.startRaceBtn.addEventListener('click', () => send({ type: 'startRace' }));
   ui.restartRaceBtn.addEventListener('click', () => send({ type: 'restartRace' }));
   ui.copyInviteBtn.addEventListener('click', copyInviteLink);
+  ui.musicToggle.addEventListener('click', toggleMusic);
   ui.animalSelect.addEventListener('change', () => {
     local.animal = ui.animalSelect.value;
     send({ type: 'updatePlayer', name: cleanName(ui.playerName.value), animal: local.animal });
@@ -167,6 +181,7 @@ function bindUI() {
   window.addEventListener('touchstart', onTouchStart, { passive: true });
   window.addEventListener('touchend', onTouchEnd, { passive: true });
   updateLobbyUI();
+  updateMusicButton();
 }
 
 function defaultServerUrl() {
@@ -267,6 +282,7 @@ function handleMessage(msg) {
     roomState = 'racing';
     resetRace(roomSeed);
     updateLobbyUI();
+    playSparkle([523.25, 659.25, 783.99, 1046.5], 0.055);
     toast('Race started! 🌈');
   }
   if (msg.type === 'raceRestarted') {
@@ -356,8 +372,14 @@ function updateGame(dt) {
 
   if ((input.leftTap || input.left) && local.laneCooldown <= 0) moveLane(-1);
   if ((input.rightTap || input.right) && local.laneCooldown <= 0) moveLane(1);
-  if ((input.jumpTap || input.up) && local.jumpTime <= 0.02 && local.slideTime <= 0) local.jumpTime = 0.62;
-  if ((input.slideTap || input.down) && local.jumpTime <= 0.02) local.slideTime = 0.46;
+  if ((input.jumpTap || input.up) && local.jumpTime <= 0.02 && local.slideTime <= 0) {
+    local.jumpTime = 0.62;
+    playSparkle([392.0, 523.25], 0.025);
+  }
+  if ((input.slideTap || input.down) && local.jumpTime <= 0.02) {
+    local.slideTime = 0.46;
+    if (input.slideTap) playTone(196.0, audio.ctx?.currentTime || 0, 0.07, 'triangle', 0.035, audio.sfxGain);
+  }
 
   local.lane += (local.targetLane - local.lane) * Math.min(1, dt * 13);
   local.wobble += dt * (local.slideTime > 0 ? 18 : 10);
@@ -367,8 +389,10 @@ function updateGame(dt) {
 }
 
 function moveLane(delta) {
+  const oldLane = local.targetLane;
   local.targetLane = constrain(local.targetLane + delta, 0, LANE_COUNT - 1);
   local.laneCooldown = 0.13;
+  if (oldLane !== local.targetLane && audio.ctx) playTone(delta < 0 ? 329.63 : 392.0, audio.ctx.currentTime, 0.055, 'square', 0.026, audio.sfxGain);
 }
 
 function checkPickups() {
@@ -381,10 +405,14 @@ function checkPickups() {
       local.score += fruit.kind === 'mango' ? 80 : 25;
       if (fruit.kind === 'mango') {
         local.shield = Math.max(local.shield, 5);
+        playSparkle([659.25, 783.99, 1046.5], 0.07);
         toast('Mango shield! One bonk is safe ✨', 1200);
       } else if (collectedFruit.size % 8 === 0) {
         local.magnet = 4;
+        playSparkle([523.25, 659.25, 987.77], 0.06);
         toast('Fruit magnet! 🍓', 900);
+      } else {
+        playSparkle([783.99], 0.035);
       }
     }
   }
@@ -403,10 +431,12 @@ function checkCollisions() {
       if (local.shield > 0) {
         local.shield = 0;
         hitCooldown = 1.2;
+        playSparkle([329.63, 493.88, 659.25], 0.065);
         toast('Coconut shield saved you! 🥥', 1000);
       } else {
         local.alive = false;
         roomState = roomState === 'racing' ? 'racing' : roomState;
+        playThump();
         toast(`Bonked by a ${OBSTACLES[obs.type].label}!`, 1600);
       }
       return;
@@ -629,6 +659,149 @@ function updateLobbyUI() {
 
 setInterval(updateLobbyUI, 250);
 
+function initAudio() {
+  if (audio.ctx) return audio.ctx;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    toast('This browser does not support Web Audio.');
+    return null;
+  }
+  const ctx = new AudioCtx();
+  audio.ctx = ctx;
+  audio.master = ctx.createGain();
+  audio.musicGain = ctx.createGain();
+  audio.sfxGain = ctx.createGain();
+  audio.master.gain.value = 0.55;
+  audio.musicGain.gain.value = 0.14;
+  audio.sfxGain.gain.value = 0.28;
+  audio.musicGain.connect(audio.master);
+  audio.sfxGain.connect(audio.master);
+  audio.master.connect(ctx.destination);
+  return ctx;
+}
+
+async function toggleMusic() {
+  const ctx = initAudio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') await ctx.resume();
+  audio.musicOn = !audio.musicOn;
+  if (audio.musicOn) {
+    startMusicLoop();
+    playSparkle([523.25, 659.25, 783.99], 0.04);
+    toast('Fruit festival chiptune on! ♪', 1100);
+  } else {
+    stopMusicLoop();
+    toast('Music off', 900);
+  }
+  updateMusicButton();
+}
+
+function updateMusicButton() {
+  if (!ui.musicToggle) return;
+  ui.musicToggle.classList.toggle('on', audio.musicOn);
+  ui.musicToggle.setAttribute('aria-pressed', String(audio.musicOn));
+  ui.musicToggle.textContent = audio.musicOn ? '♫ Music on' : '♪ Music';
+}
+
+function startMusicLoop() {
+  if (audio.scheduler) return;
+  const ctx = initAudio();
+  if (!ctx) return;
+  audio.nextNoteTime = ctx.currentTime + 0.05;
+  audio.step = 0;
+  audio.scheduler = setInterval(scheduleMusic, 25);
+}
+
+function stopMusicLoop() {
+  if (audio.scheduler) clearInterval(audio.scheduler);
+  audio.scheduler = null;
+}
+
+function scheduleMusic() {
+  const ctx = audio.ctx;
+  if (!ctx || !audio.musicOn) return;
+  const tempo = roomState === 'racing' && local.alive ? 156 : 118;
+  const stepDur = 60 / tempo / 2;
+  while (audio.nextNoteTime < ctx.currentTime + 0.12) {
+    const step = audio.step % 32;
+    const chordRoot = [261.63, 349.23, 392.0, 329.63][Math.floor(step / 8) % 4];
+    const melody = [0, 4, 7, 12, 7, 4, 9, 7, 0, 4, 7, 14, 12, 9, 7, 4, 2, 5, 9, 14, 12, 9, 5, 2, 4, 7, 11, 16, 14, 11, 7, 4];
+    const bass = step % 8 === 0 ? chordRoot / 2 : step % 8 === 4 ? chordRoot * 0.75 : null;
+    const leadFreq = chordRoot * Math.pow(2, melody[step] / 12);
+
+    if (step % 2 === 0) playTone(leadFreq, audio.nextNoteTime, 0.075, 'square', 0.055, audio.musicGain);
+    if (step % 4 === 2) playTone(leadFreq * 1.5, audio.nextNoteTime, 0.045, 'triangle', 0.035, audio.musicGain);
+    if (bass) playTone(bass, audio.nextNoteTime, 0.16, 'sawtooth', 0.038, audio.musicGain);
+    if (step % 4 === 0) playNoise(audio.nextNoteTime, 0.04, 0.032, 'kick');
+    if (step % 8 === 4) playNoise(audio.nextNoteTime, 0.05, 0.026, 'hat');
+
+    flashMusicBeat(step);
+    audio.nextNoteTime += stepDur;
+    audio.step += 1;
+  }
+}
+
+function flashMusicBeat(step) {
+  if (!ui.musicToggle || step % 4 !== 0) return;
+  ui.musicToggle.classList.add('beat');
+  clearTimeout(audio.lastBeatFlash);
+  audio.lastBeatFlash = setTimeout(() => ui.musicToggle?.classList.remove('beat'), 90);
+}
+
+function playTone(freq, when, dur, wave = 'square', volume = 0.05, destination = audio.sfxGain) {
+  const ctx = audio.ctx;
+  if (!ctx || !destination) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = wave;
+  osc.frequency.setValueAtTime(freq, when);
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), when + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  osc.connect(gain);
+  gain.connect(destination);
+  osc.start(when);
+  osc.stop(when + dur + 0.025);
+}
+
+function playNoise(when, dur = 0.06, volume = 0.05, flavor = 'hat') {
+  const ctx = audio.ctx;
+  if (!ctx || !audio.sfxGain) return;
+  const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * dur));
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    const decay = 1 - i / bufferSize;
+    data[i] = (Math.random() * 2 - 1) * decay * (flavor === 'kick' ? 0.65 : 1);
+  }
+  const source = ctx.createBufferSource();
+  const gain = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  filter.type = flavor === 'kick' ? 'lowpass' : 'highpass';
+  filter.frequency.value = flavor === 'kick' ? 180 : 3500;
+  gain.gain.setValueAtTime(volume, when);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  source.buffer = buffer;
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(flavor === 'kick' ? audio.musicGain : audio.sfxGain);
+  source.start(when);
+  source.stop(when + dur);
+}
+
+function playSparkle(notes = [659.25, 783.99, 987.77], volume = 0.08) {
+  const ctx = audio.ctx;
+  if (!ctx || ctx.state === 'suspended') return;
+  notes.forEach((freq, i) => playTone(freq, ctx.currentTime + i * 0.055, 0.11, 'triangle', volume * (1 - i * 0.14), audio.sfxGain));
+}
+
+function playThump() {
+  const ctx = audio.ctx;
+  if (!ctx || ctx.state === 'suspended') return;
+  playTone(110, ctx.currentTime, 0.12, 'sawtooth', 0.08, audio.sfxGain);
+  playTone(73.42, ctx.currentTime + 0.05, 0.18, 'triangle', 0.06, audio.sfxGain);
+}
+
 function copyInviteLink() {
   const server = encodeURIComponent(ui.serverUrl.value || defaultServerUrl());
   const url = `${location.origin}${location.pathname}?room=${encodeURIComponent(roomCode)}&server=${server}`;
@@ -648,6 +821,7 @@ function toast(message, ms = 1800) {
 
 function onKeyDown(event) {
   if (event.target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName)) return;
+  if (['m', 'M'].includes(event.key)) { toggleMusic(); event.preventDefault(); }
   if (['ArrowLeft', 'a', 'A'].includes(event.key)) { input.left = true; input.leftTap = true; event.preventDefault(); }
   if (['ArrowRight', 'd', 'D'].includes(event.key)) { input.right = true; input.rightTap = true; event.preventDefault(); }
   if (['ArrowUp', 'w', 'W', ' '].includes(event.key)) { input.up = true; input.jumpTap = true; event.preventDefault(); }

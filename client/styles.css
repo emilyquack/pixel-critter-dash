@@ -21,6 +21,10 @@ button, input, select { font: inherit; }
 h1 { margin: 0; font-size: clamp(18px, 2.2vw, 28px); letter-spacing: 0.02em; }
 #connectionLabel { margin: 2px 0 0; font-size: 13px; opacity: 0.75; }
 #scoreboard { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; max-width: min(56vw, 720px); }
+.hud-right { display: grid; gap: 8px; justify-items: end; pointer-events: auto; }
+.music-toggle { padding: 9px 13px; border: 2px solid rgba(255,255,255,0.88); border-radius: 999px; background: rgba(255, 255, 255, 0.78); box-shadow: 0 8px 18px var(--shadow), inset 0 -3px 0 rgba(47,42,69,0.1); font-size: 13px; }
+.music-toggle.on { background: linear-gradient(180deg, #e4ff9f, #9ee8b3); color: #356734; }
+.music-toggle.beat { transform: translateY(-1px) scale(1.04); }
 .score-pill { min-width: 124px; padding: 8px 10px; border-radius: 16px; background: rgba(255,255,255,0.76); border: 2px solid rgba(255,255,255,0.85); box-shadow: 0 8px 18px var(--shadow); text-align: left; }
 .score-pill b { display: block; font-size: 13px; }
 .score-pill span { font-size: 12px; opacity: 0.72; }
@@ -56,6 +60,7 @@ button.primary { background: linear-gradient(180deg, #ffdf74, #ffad72); }
 @media (max-width: 720px) {
   #hud { align-items: stretch; flex-direction: column; }
   #scoreboard { max-width: none; justify-content: flex-start; }
+  .hud-right { width: 100%; justify-items: start; }
   .brand { width: 100%; }
   .form-grid { grid-template-columns: 1fr; }
   .help-card { font-size: 12px; }
