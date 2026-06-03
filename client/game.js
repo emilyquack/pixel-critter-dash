@@ -6,6 +6,14 @@ const MAX_REMOTE_AGE_MS = 1800;
 const SEND_EVERY_MS = 80;
 const LANE_COUNT = 3;
 const PLAYER_Y_RATIO = 0.76;
+const WORLD_VIEW_DISTANCE = 1200;
+const START_SPEED = 245;
+const MAX_SPEED_BOOST = 260;
+const SPEED_RAMP = 0.012;
+const LOCAL_PLAYER_SCALE = 2.35;
+const REMOTE_PLAYER_SCALE = 1.95;
+const JUMP_DURATION = 0.72;
+const SLIDE_DURATION = 0.58;
 
 const ANIMALS = {
   bunny: { label: 'Ribbon Bunny', body: '#fff3f7', belly: '#ffd1df', ear: '#ff9fbd', cheek: '#ff8fb4', accent: '#7ed7ff' },
@@ -391,14 +399,14 @@ function buildTrack(seed) {
   const obstacleTypes = Object.keys(OBSTACLES);
   track = [];
   fruits = [];
-  let d = 320;
-  for (let i = 0; i < 260; i++) {
+  let d = 430;
+  for (let i = 0; i < 240; i++) {
     const lane = Math.floor(rand() * LANE_COUNT);
     const type = obstacleTypes[Math.floor(rand() * obstacleTypes.length)];
     track.push({ id: 'o' + i, distance: d, lane, type });
     const fruitLane = Math.floor(rand() * LANE_COUNT);
-    fruits.push({ id: 'f' + i, distance: d + 120 + rand() * 90, lane: fruitLane, kind: rand() > 0.82 ? 'mango' : 'berry' });
-    d += 245 + rand() * 175;
+    fruits.push({ id: 'f' + i, distance: d + 150 + rand() * 110, lane: fruitLane, kind: rand() > 0.82 ? 'mango' : 'berry' });
+    d += 300 + rand() * 220;
   }
 }
 
@@ -409,7 +417,7 @@ function updateGame(dt) {
     return;
   }
 
-  const speed = 310 + Math.min(360, local.distance * 0.018);
+  const speed = START_SPEED + Math.min(MAX_SPEED_BOOST, local.distance * SPEED_RAMP);
   local.distance += speed * dt;
   local.score = Math.floor(local.distance / 6) + collectedFruit.size * 25;
   local.laneCooldown = Math.max(0, local.laneCooldown - dt);
@@ -422,11 +430,11 @@ function updateGame(dt) {
   if ((input.leftTap || input.left) && local.laneCooldown <= 0) moveLane(-1);
   if ((input.rightTap || input.right) && local.laneCooldown <= 0) moveLane(1);
   if ((input.jumpTap || input.up) && local.jumpTime <= 0.02 && local.slideTime <= 0) {
-    local.jumpTime = 0.62;
+    local.jumpTime = JUMP_DURATION;
     playSparkle([392.0, 523.25], 0.025);
   }
   if ((input.slideTap || input.down) && local.jumpTime <= 0.02) {
-    local.slideTime = 0.46;
+    local.slideTime = SLIDE_DURATION;
     if (input.slideTap) playTone(196.0, audio.ctx?.currentTime || 0, 0.07, 'triangle', 0.035, audio.sfxGain);
   }
 
@@ -471,11 +479,11 @@ function checkCollisions() {
   if (hitCooldown > 0) return;
   for (const obs of track) {
     const z = obs.distance - local.distance;
-    if (z < -48) continue;
-    if (z > 50) break;
-    if (Math.abs(obs.lane - local.lane) > 0.36) continue;
+    if (z < -40) continue;
+    if (z > 42) break;
+    if (Math.abs(obs.lane - local.lane) > 0.31) continue;
     const action = OBSTACLES[obs.type].action;
-    const safe = action === 'jump' ? local.jumpTime > 0.16 : action === 'slide' ? local.slideTime > 0.08 : false;
+    const safe = action === 'jump' ? local.jumpTime > 0.10 : action === 'slide' ? local.slideTime > 0.05 : false;
     if (!safe) {
       if (local.shield > 0) {
         local.shield = 0;
@@ -572,7 +580,7 @@ function drawRoad() {
     line(xTop, horizon, xBot, bottom);
   }
   noStroke();
-  const stripeOffset = (local.distance * 0.55) % 80;
+  const stripeOffset = (local.distance * 0.34) % 80;
   for (let y = horizon + stripeOffset - 80; y < height; y += 80) {
     const t = constrain((y - horizon) / (height - horizon), 0, 1);
     const w = roadTopW + (roadBotW - roadTopW) * t;
@@ -583,18 +591,18 @@ function drawRoad() {
 
 function worldPoint(distance, lane) {
   const z = distance - local.distance;
-  const t = constrain(1 - z / 980, 0, 1);
+  const t = constrain(1 - z / WORLD_VIEW_DISTANCE, 0, 1);
   const eased = t * t * (3 - 2 * t);
   const y = height * 0.22 + eased * (height * 0.64);
   const laneSpacing = (74 + eased * Math.min(240, width * 0.26));
   const x = width / 2 + (lane - 1) * laneSpacing;
-  const s = 0.28 + eased * 1.6;
+  const s = 0.22 + eased * 1.45;
   return { x, y, scale: s, z };
 }
 
 function drawTrackObjects() {
-  const visibleObstacles = track.filter(o => o.distance - local.distance > -80 && o.distance - local.distance < 980);
-  const visibleFruits = fruits.filter(f => !collectedFruit.has(f.id) && f.distance - local.distance > -60 && f.distance - local.distance < 980);
+  const visibleObstacles = track.filter(o => o.distance - local.distance > -80 && o.distance - local.distance < WORLD_VIEW_DISTANCE);
+  const visibleFruits = fruits.filter(f => !collectedFruit.has(f.id) && f.distance - local.distance > -60 && f.distance - local.distance < WORLD_VIEW_DISTANCE);
   const objects = visibleObstacles.map(o => ({ ...o, objectType: 'obstacle' })).concat(visibleFruits.map(f => ({ ...f, objectType: 'fruit' })));
   objects.sort((a, b) => b.distance - a.distance);
   for (const obj of objects) {
@@ -621,6 +629,18 @@ function drawObstacle(x, y, s, type) {
     fill('#fff2d4'); rect(-9, -8, 18, 24, 5); fill('#ff7e91'); ellipse(0, -17, 45, 25); fill('#fff7d8'); ellipse(-10, -20, 7, 5); ellipse(8, -13, 9, 6);
   }
   pop();
+  drawObstacleCue(x, y, s, def.action);
+}
+
+function drawObstacleCue(x, y, s, action) {
+  if (s < 0.56) return;
+  const cue = action === 'jump' ? '↑ JUMP' : action === 'slide' ? '↓ SLIDE' : '↔ MOVE';
+  const bg = action === 'jump' ? '#7ed7ff' : action === 'slide' ? '#ffd36b' : '#ff9fbd';
+  push(); translate(x, y - 54 * s); noStroke(); textAlign(CENTER); textSize(Math.max(10, 10 * s));
+  fill('#fff7d8dd'); rect(-30 * s, -17 * s, 60 * s, 19 * s, 9 * s);
+  fill(bg); rect(-27 * s, -14 * s, 54 * s, 13 * s, 7 * s);
+  fill('#2f2a45'); text(cue, 0, -4 * s);
+  pop();
 }
 
 function drawFruit(x, y, s, kind) {
@@ -640,10 +660,10 @@ function drawPlayers() {
     const lead = (p.distance || 0) - local.distance;
     const y = height * PLAYER_Y_RATIO - constrain(lead * 0.14, -130, 190);
     const x = laneX(p.lane ?? p.targetLane ?? 1, y);
-    drawAnimal(x, y, 2.35, p, false);
+    drawAnimal(x, y, REMOTE_PLAYER_SCALE, p, false);
   }
-  const jumpLift = local.jumpTime > 0 ? Math.sin((local.jumpTime / 0.62) * Math.PI) * 88 : 0;
-  drawAnimal(laneX(local.lane, height * PLAYER_Y_RATIO), height * PLAYER_Y_RATIO - jumpLift, 2.85, local, true);
+  const jumpLift = local.jumpTime > 0 ? Math.sin((local.jumpTime / JUMP_DURATION) * Math.PI) * 76 : 0;
+  drawAnimal(laneX(local.lane, height * PLAYER_Y_RATIO), height * PLAYER_Y_RATIO - jumpLift, LOCAL_PLAYER_SCALE, local, true);
 }
 
 function laneX(lane, y) {
@@ -680,7 +700,8 @@ function drawAnimal(x, y, s, p, isMe) {
   if (isMe) drawTinyCrown();
   pop();
 
-  push(); textAlign(CENTER); textSize(isMe ? 14 : 12); fill('#2f2a45'); stroke('#fff7d8'); strokeWeight(4); text(p.name || 'pal', x, y - 86 * (s / 2.85)); pop();
+  const nameY = y - (s * 47 + 24);
+  push(); textAlign(CENTER); textSize(isMe ? 14 : 12); fill('#2f2a45'); stroke('#fff7d8'); strokeWeight(4); text(p.name || 'pal', x, nameY); pop();
 }
 
 function drawCritterTail(kind, animal, wiggle) {
