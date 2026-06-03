@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Pixel Critter Dash</title>
+  <script>window.p5 = window.p5 || {}; window.p5.disableFriendlyErrors = true;</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.3/p5.min.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main id="app-shell">
+    <section id="hud" aria-live="polite">
+      <div class="brand">
+        <span class="brand-mark">🐾</span>
+        <div>
+          <h1>Pixel Critter Dash</h1>
+          <p id="connectionLabel">Connecting to party server…</p>
+        </div>
+      </div>
+      <div id="scoreboard"></div>
+    </section>
+
+    <section id="lobby" class="panel">
+      <div class="panel-card hero-card">
+        <div class="badge">online party prototype</div>
+        <h2>Race cute pixel animals through a fruit festival!</h2>
+        <p>Create a room, send the invite link, and dash with friends. The first prototype supports room codes, shared race starts, live rivals, obstacles, pickups, and a cozy pixel style.</p>
+
+        <div class="form-grid">
+          <label>
+            Your name
+            <input id="playerName" maxlength="16" value="Mango Pal" />
+          </label>
+          <label>
+            Animal
+            <select id="animalSelect">
+              <option value="bunny">Bunny</option>
+              <option value="raccoon">Raccoon</option>
+              <option value="cat">Cat</option>
+              <option value="fox">Fox</option>
+              <option value="panda">Panda</option>
+              <option value="frog">Frog</option>
+            </select>
+          </label>
+          <label>
+            Room code
+            <input id="roomCode" maxlength="12" placeholder="PAW-123" />
+          </label>
+          <label>
+            Server URL
+            <input id="serverUrl" placeholder="ws://localhost:3000" />
+          </label>
+        </div>
+
+        <div class="button-row">
+          <button id="createRoomBtn" class="primary">Create room</button>
+          <button id="joinRoomBtn">Join room</button>
+          <button id="soloBtn">Practice solo</button>
+        </div>
+
+        <div id="roomInfo" class="room-info hidden">
+          <p>Room: <strong id="roomCodeLabel"></strong></p>
+          <p>Invite: <button id="copyInviteBtn">Copy invite link</button></p>
+        </div>
+
+        <div id="lobbyPlayers" class="player-list"></div>
+        <div class="button-row host-tools hidden" id="hostTools">
+          <button id="startRaceBtn" class="primary">Start race</button>
+          <button id="restartRaceBtn">Restart</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="helpCard" class="help-card">
+      <strong>Controls</strong>
+      <span>←/→ or A/D: lanes</span>
+      <span>↑/W/Space: jump</span>
+      <span>↓/S: slide</span>
+      <span>Swipe on phones</span>
+    </section>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
