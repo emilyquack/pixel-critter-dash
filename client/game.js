@@ -12,11 +12,15 @@ const MAX_SPEED_BOOST = 260;
 const SPEED_RAMP = 0.012;
 const LOCAL_PLAYER_SCALE = 2.35;
 const REMOTE_PLAYER_SCALE = 1.95;
-const JUMP_DURATION = 0.92;
+const JUMP_DURATION = 1.08;
 const SLIDE_DURATION = 0.58;
 const JUMP_SAFE_REMAINING = 0.03;
 const JUMP_OBSTACLE_FRONT_WINDOW = 34;
 const JUMP_OBSTACLE_BACK_WINDOW = -50;
+// Jump obstacles should feel forgiving: one jump now clears hazards that were
+// up to ~1.35 seconds away at the starting speed, so players can hop early
+// instead of panic-jumping at the very last mango-second.
+const JUMP_CLEAR_DISTANCE = 340;
 
 const ANIMALS = {
   bunny: { label: 'Ribbon Bunny', body: '#fff3f7', belly: '#ffd1df', ear: '#ff9fbd', cheek: '#ff8fb4', accent: '#7ed7ff' },
@@ -82,6 +86,7 @@ function makeDefaultPlayer(id, name, animal) {
     alive: true,
     finished: false,
     jumpTime: 0,
+    jumpClearUntil: -Infinity,
     slideTime: 0,
     laneCooldown: 0,
     wobble: 0,
@@ -346,6 +351,7 @@ function resetRace(seed) {
   local.lane = 1;
   local.targetLane = 1;
   local.jumpTime = 0;
+  local.jumpClearUntil = -Infinity;
   local.slideTime = 0;
   local.laneCooldown = 0;
   local.shield = 0;
@@ -433,8 +439,7 @@ function updateGame(dt) {
   if ((input.leftTap || input.left) && local.laneCooldown <= 0) moveLane(-1);
   if ((input.rightTap || input.right) && local.laneCooldown <= 0) moveLane(1);
   if ((input.jumpTap || input.up) && local.jumpTime <= 0.02 && local.slideTime <= 0) {
-    local.jumpTime = JUMP_DURATION;
-    playSparkle([392.0, 523.25], 0.025);
+    startJump();
   }
   if ((input.slideTap || input.down) && local.jumpTime <= 0.02) {
     local.slideTime = SLIDE_DURATION;
@@ -453,6 +458,12 @@ function moveLane(delta) {
   local.targetLane = constrain(local.targetLane + delta, 0, LANE_COUNT - 1);
   local.laneCooldown = 0.13;
   if (oldLane !== local.targetLane && audio.ctx) playTone(delta < 0 ? 329.63 : 392.0, audio.ctx.currentTime, 0.055, 'square', 0.026, audio.sfxGain);
+}
+
+function startJump() {
+  local.jumpTime = JUMP_DURATION;
+  local.jumpClearUntil = Math.max(local.jumpClearUntil || -Infinity, local.distance + JUMP_CLEAR_DISTANCE);
+  playSparkle([392.0, 523.25], 0.025);
 }
 
 function checkPickups() {
@@ -488,7 +499,7 @@ function checkCollisions() {
     if (z < backWindow) continue;
     if (z > frontWindow) break;
     if (Math.abs(obs.lane - local.lane) > 0.31) continue;
-    const safe = action === 'jump' ? local.jumpTime > JUMP_SAFE_REMAINING : action === 'slide' ? local.slideTime > 0.05 : false;
+    const safe = action === 'jump' ? isJumpObstacleCleared(obs) : action === 'slide' ? local.slideTime > 0.05 : false;
     if (!safe) {
       if (local.shield > 0) {
         local.shield = 0;
@@ -504,6 +515,13 @@ function checkCollisions() {
       return;
     }
   }
+}
+
+function isJumpObstacleCleared(obs) {
+  // Old behavior only counted the visible airtime, which made early jumps feel
+  // like they "landed into" baskets/turtles/puddles. Keep the airtime check,
+  // then add a distance-based clear zone from where the jump began.
+  return local.jumpTime > JUMP_SAFE_REMAINING || obs.distance <= (local.jumpClearUntil || -Infinity);
 }
 
 function maybeSendState() {
