@@ -66,11 +66,21 @@ try {
   assert.match(html, /Restart round/, 'after-round restart button should be served');
   assert.match(html, /Power-ups/, 'help card should explain the new power-ups');
   assert.match(html, /🍓 magnet, 🧁 float/, 'help card should list the added power-ups');
+  assert.match(html, /Festival Frenzies/, 'help card should explain special festival events');
+  assert.match(html, /Melon Roll/, 'help card should mention the giant melon event');
 
   const gameJs = await (await fetch(httpUrl + '/game.js')).text();
   assert.match(gameJs, /SLIDE_CLEAR_DISTANCE/, 'slide obstacles should include distance-based forgiveness');
   assert.match(gameJs, /function isSlideObstacleCleared/, 'slide obstacle safety should be centralized and testable');
   assert.match(gameJs, /const PASS_THROUGH_STRUCTURES/, 'dash-through platforms, ladders, and elevation should be generated');
+  assert.match(gameJs, /const FESTIVAL_FRENZIES/, 'special festival events should be defined');
+  assert.match(gameJs, /melonRoll/, 'Giant Melon Roll frenzy should exist');
+  assert.match(gameJs, /function buildFestivalEvents/, 'festival events should be generated into the track');
+  assert.match(gameJs, /function checkFestivalEvents/, 'festival event lifecycle should be updated during races');
+  assert.match(gameJs, /function checkFestivalCollisions/, 'festival events should have their own collision checks');
+  assert.match(gameJs, /function drawMelonRollFrenzy/, 'Giant Melon Roll should have a custom visual renderer');
+  assert.match(gameJs, /Festival Frenzy/, 'festival events should announce themselves to the player');
+  assert.match(gameJs, /Melon dodged/, 'surviving a festival event should award a bonus');
   assert.match(gameJs, /const POWER_UPS/, 'helpful collectible power-ups should be defined');
   assert.match(gameJs, /pineappleDash/, 'Pineapple Dash power-up should exist');
   assert.match(gameJs, /coconutShield/, 'Coconut Shield power-up should exist');

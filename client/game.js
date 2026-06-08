@@ -35,6 +35,14 @@ const CUPCAKE_FLOAT_DURATION = 4.5;
 const MANGO_COMBO_DURATION = 6;
 const MANGO_COMBO_BONUS = 175;
 const MANGO_COMBO_FRUIT_BONUS = 35;
+const MELON_ROLL_EVENT_DISTANCE = 1180;
+const MELON_ROLL_SPACING = 235;
+const MELON_ROLL_WARNING_DISTANCE = 520;
+const MELON_ROLL_BONUS = 250;
+
+const FESTIVAL_FRENZIES = {
+  melonRoll: { label: 'Melon Roll', emoji: '🍉', color: '#6ed46b' }
+};
 
 const PASS_THROUGH_STRUCTURES = {
   platform: { label: 'flower platform', color: '#ffcf7f' },
@@ -83,6 +91,9 @@ let track = [];
 let fruits = [];
 let powerUps = [];
 let passThroughStructures = [];
+let festivalEvents = [];
+let announcedFestivalEvents = new Set();
+let clearedFestivalEvents = new Set();
 let collectedFruit = new Set();
 let collectedPowerUps = new Set();
 let hitCooldown = 0;
@@ -398,6 +409,8 @@ function resetRace(seed) {
   local.mangoCombo = 0;
   collectedFruit.clear();
   collectedPowerUps.clear();
+  announcedFestivalEvents.clear();
+  clearedFestivalEvents.clear();
   hitCooldown = 0;
   buildTrack(roomSeed);
   updateRoundEndUI();
@@ -453,6 +466,7 @@ function buildTrack(seed) {
   fruits = [];
   powerUps = [];
   passThroughStructures = [];
+  festivalEvents = [];
   let d = 430;
   for (let i = 0; i < 240; i++) {
     const lane = Math.floor(rand() * LANE_COUNT);
@@ -480,6 +494,28 @@ function buildTrack(seed) {
     const fruitLane = Math.floor(rand() * LANE_COUNT);
     fruits.push({ id: 'f' + i, distance: d + 150 + rand() * 110, lane: fruitLane, kind: rand() > 0.82 ? 'mango' : 'berry' });
     d += 300 + rand() * 220;
+  }
+  buildFestivalEvents(rand, d);
+}
+
+function buildFestivalEvents(rand, maxDistance) {
+  let startDistance = 1850 + rand() * 420;
+  let index = 0;
+  while (startDistance < maxDistance - MELON_ROLL_EVENT_DISTANCE) {
+    const firstLane = Math.floor(rand() * LANE_COUNT);
+    const lanePattern = Array.from({ length: 7 }, (_, step) => {
+      const sway = step % 3 === 0 ? 0 : step % 3 === 1 ? 1 : -1;
+      return constrain(firstLane + sway, 0, LANE_COUNT - 1);
+    });
+    festivalEvents.push({
+      id: 'festival-melon-' + index,
+      kind: 'melonRoll',
+      startDistance,
+      endDistance: startDistance + MELON_ROLL_EVENT_DISTANCE,
+      lanePattern
+    });
+    startDistance += 3300 + rand() * 1400;
+    index++;
   }
 }
 
@@ -517,6 +553,8 @@ function updateGame(dt) {
 
   checkPickups();
   checkPowerUps();
+  checkFestivalEvents();
+  checkFestivalCollisions();
   checkCollisions();
 }
 
@@ -581,6 +619,58 @@ function checkPowerUps() {
       applyPowerUp(power.kind);
     }
   }
+}
+
+function activeFestivalEvent(event) {
+  return local.distance >= event.startDistance && local.distance <= event.endDistance;
+}
+
+function checkFestivalEvents() {
+  for (const event of festivalEvents) {
+    if (!announcedFestivalEvents.has(event.id) && local.distance > event.startDistance - MELON_ROLL_WARNING_DISTANCE && local.distance < event.endDistance) {
+      announcedFestivalEvents.add(event.id);
+      toast(`🍉 Festival Frenzy: ${FESTIVAL_FRENZIES[event.kind]?.label || 'Melon Roll'}! Dodge the giant melon!`, 1800);
+      playSparkle([196.0, 246.94, 392.0], 0.06);
+    }
+    if (!clearedFestivalEvents.has(event.id) && local.distance > event.endDistance) {
+      clearedFestivalEvents.add(event.id);
+      local.bonusScore = (local.bonusScore || 0) + MELON_ROLL_BONUS;
+      toast(`🍉 Melon dodged! +${MELON_ROLL_BONUS}`, 1300);
+      playSparkle([523.25, 659.25, 783.99, 1046.5], 0.07);
+    }
+  }
+}
+
+function checkFestivalCollisions() {
+  if (hitCooldown > 0) return;
+  for (const event of festivalEvents) {
+    if (event.kind !== 'melonRoll' || !activeFestivalEvent(event)) continue;
+    for (const roll of melonRollHazards(event)) {
+      const z = roll.distance - local.distance;
+      if (z < -54 || z > 42) continue;
+      if (Math.abs(roll.lane - local.lane) > 0.34) continue;
+      if (local.dashBoost > 0) return;
+      if (local.shield > 0) {
+        local.shield = 0;
+        hitCooldown = 1.2;
+        playSparkle([329.63, 493.88, 659.25], 0.065);
+        toast('Coconut shield saved you from the melon! 🥥', 1100);
+      } else {
+        local.alive = false;
+        playThump();
+        toast('Bonked by the Giant Melon Roll! 🍉', 1600);
+      }
+      return;
+    }
+  }
+}
+
+function melonRollHazards(event) {
+  const hazards = [];
+  for (let distance = event.startDistance + 160, index = 0; distance < event.endDistance; distance += MELON_ROLL_SPACING, index++) {
+    hazards.push({ distance, lane: event.lanePattern[index % event.lanePattern.length] });
+  }
+  return hazards;
 }
 
 function applyPowerUp(kind) {
@@ -680,7 +770,9 @@ function renderGame() {
   drawParallax();
   drawRoad();
   drawTrackObjects();
+  drawFestivalEvents();
   drawPlayers();
+  drawFestivalBanner();
   drawRaceOver();
 }
 
@@ -770,6 +862,59 @@ function drawTrackObjects() {
     else if (obj.objectType === 'structure') drawPassThroughStructure(pt.x, pt.y, pt.scale, obj.type);
     else drawObstacle(pt.x, pt.y, pt.scale, obj.type);
   }
+}
+
+function drawFestivalEvents() {
+  for (const event of festivalEvents) {
+    if (event.kind !== 'melonRoll') continue;
+    const nearEnough = local.distance > event.startDistance - MELON_ROLL_WARNING_DISTANCE && local.distance < event.endDistance + 140;
+    if (nearEnough) drawMelonRollFrenzy(event);
+  }
+}
+
+function drawMelonRollFrenzy(event) {
+  const warningActive = local.distance < event.startDistance;
+  const hazards = melonRollHazards(event)
+    .filter(roll => roll.distance - local.distance > -120 && roll.distance - local.distance < WORLD_VIEW_DISTANCE)
+    .sort((a, b) => b.distance - a.distance);
+
+  for (const roll of hazards) {
+    const pt = worldPoint(roll.distance, roll.lane);
+    drawMelonWarning(pt.x, pt.y, pt.scale, warningActive);
+    drawGiantMelon(pt.x, pt.y, pt.scale, roll.distance);
+  }
+}
+
+function drawMelonWarning(x, y, s, warningActive) {
+  if (s < 0.38) return;
+  push(); translate(x, y + 18 * s); scale(s); noStroke();
+  fill(warningActive ? '#ff6f8fb0' : '#2f2a4544');
+  ellipse(0, 0, 72, 20);
+  fill('#fff7d8cc'); rect(-34, -9, 68, 8, 4);
+  pop();
+}
+
+function drawGiantMelon(x, y, s, distance) {
+  const spin = ((distance - local.distance) / 36) % Math.PI;
+  push(); translate(x, y - 20 * s); scale(s * 1.35); rotate(spin); noStroke();
+  fill('#3d8f4f'); ellipse(0, 0, 52, 52);
+  fill('#6ed46b'); ellipse(0, 0, 43, 43);
+  stroke('#2f7b49'); strokeWeight(3);
+  line(-16, -20, -8, 20); line(0, -23, 0, 23); line(16, -20, 8, 20);
+  noStroke(); fill('#fff7d8aa'); ellipse(-11, -13, 12, 7);
+  pop();
+  if (s > 0.55) drawPowerCue(x, y + 4 * s, s, 'MELON ROLL');
+}
+
+function drawFestivalBanner() {
+  const active = festivalEvents.find(event => local.distance > event.startDistance - MELON_ROLL_WARNING_DISTANCE && local.distance < event.endDistance && event.kind === 'melonRoll');
+  if (!active || local.alive === false) return;
+  const untilStart = Math.max(0, active.startDistance - local.distance);
+  const label = untilStart > 0 ? `Festival Frenzy in ${Math.ceil(untilStart / 120)}!` : 'Festival Frenzy: Melon Roll!';
+  push(); noStroke(); textAlign(CENTER); textSize(16);
+  fill('#2f2a45cc'); rect(width / 2 - 150, height * 0.16 - 22, 300, 34, 17);
+  fill('#fff7d8'); text(`🍉 ${label}`, width / 2, height * 0.16);
+  pop();
 }
 
 function drawObstacle(x, y, s, type) {
