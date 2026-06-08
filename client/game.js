@@ -32,7 +32,9 @@ const PINEAPPLE_DASH_DURATION = 3.2;
 const PINEAPPLE_DASH_SPEED_BOOST = 120;
 const BERRY_MAGNET_DURATION = 6;
 const CUPCAKE_FLOAT_DURATION = 4.5;
-const MANGO_BLOOM_CLEAR_DISTANCE = 700;
+const MANGO_COMBO_DURATION = 6;
+const MANGO_COMBO_BONUS = 175;
+const MANGO_COMBO_FRUIT_BONUS = 35;
 
 const PASS_THROUGH_STRUCTURES = {
   platform: { label: 'flower platform', color: '#ffcf7f' },
@@ -111,6 +113,7 @@ function makeDefaultPlayer(id, name, animal) {
     targetLane: 1,
     distance: 0,
     score: 0,
+    bonusScore: 0,
     alive: true,
     finished: false,
     jumpTime: 0,
@@ -123,6 +126,7 @@ function makeDefaultPlayer(id, name, animal) {
     wobble: 0,
     shield: 0,
     magnet: 0,
+    mangoCombo: 0,
     lastSeen: Date.now()
   };
 }
@@ -377,6 +381,7 @@ function resetRace(seed) {
   roomSeed = String(seed || 'MANGO-SEED');
   local.distance = 0;
   local.score = 0;
+  local.bonusScore = 0;
   local.alive = true;
   local.finished = false;
   local.lane = 1;
@@ -390,6 +395,7 @@ function resetRace(seed) {
   local.laneCooldown = 0;
   local.shield = 0;
   local.magnet = 0;
+  local.mangoCombo = 0;
   collectedFruit.clear();
   collectedPowerUps.clear();
   hitCooldown = 0;
@@ -486,7 +492,7 @@ function updateGame(dt) {
 
   const speed = START_SPEED + Math.min(MAX_SPEED_BOOST, local.distance * SPEED_RAMP) + (local.dashBoost > 0 ? PINEAPPLE_DASH_SPEED_BOOST : 0);
   local.distance += speed * dt;
-  local.score = Math.floor(local.distance / 6) + collectedFruit.size * 25 + collectedPowerUps.size * 45;
+  local.score = Math.floor(local.distance / 6) + collectedFruit.size * 25 + collectedPowerUps.size * 45 + Math.floor(local.bonusScore || 0);
   local.laneCooldown = Math.max(0, local.laneCooldown - dt);
   local.jumpTime = Math.max(0, local.jumpTime - dt);
   local.slideTime = Math.max(0, local.slideTime - dt);
@@ -494,6 +500,7 @@ function updateGame(dt) {
   local.floatGrace = Math.max(0, local.floatGrace - dt);
   local.shield = Math.max(0, local.shield - dt);
   local.magnet = Math.max(0, local.magnet - dt);
+  local.mangoCombo = Math.max(0, local.mangoCombo - dt);
   hitCooldown = Math.max(0, hitCooldown - dt);
 
   if ((input.leftTap || input.left) && local.laneCooldown <= 0) moveLane(-1);
@@ -539,45 +546,29 @@ function checkPickups() {
     const laneNear = Math.abs(fruit.lane - local.lane) < (local.magnet > 0 ? 1.45 : 0.36);
     if (z < 46 && z > -42 && laneNear) {
       collectedFruit.add(fruit.id);
-      local.score += fruit.kind === 'mango' ? 80 : 25;
       if (fruit.kind === 'mango') {
-        const cleared = clearNearestLaneObstacle();
-        playSparkle([659.25, 783.99, 1046.5, 1318.51], 0.075);
-        if (cleared) {
-          toast(`🥭 Mango Bloom! Cleared the ${OBSTACLES[cleared.type]?.label || 'obstacle'} ahead.`, 1400);
-        } else {
-          local.score += 45;
-          toast('🥭 Mango Bloom! Clear path bonus!', 1200);
-        }
-      } else if (collectedFruit.size % 8 === 0) {
-        local.magnet = 4;
-        playSparkle([523.25, 659.25, 987.77], 0.06);
-        toast('Fruit magnet! 🍓', 900);
+        applyMangoCombo();
       } else {
-        playSparkle([783.99], 0.035);
+        if (local.mangoCombo > 0) {
+          local.bonusScore = (local.bonusScore || 0) + MANGO_COMBO_FRUIT_BONUS;
+          playSparkle([783.99, 987.77], 0.045);
+        } else if (collectedFruit.size % 8 === 0) {
+          local.magnet = 4;
+          playSparkle([523.25, 659.25, 987.77], 0.06);
+          toast('Fruit magnet! 🍓', 900);
+        } else {
+          playSparkle([783.99], 0.035);
+        }
       }
     }
   }
 }
 
-function clearNearestLaneObstacle(maxDistance = MANGO_BLOOM_CLEAR_DISTANCE) {
-  const activeLane = Math.round(local.targetLane ?? local.lane);
-  let bestIndex = -1;
-  let bestZ = Infinity;
-  for (let i = 0; i < track.length; i++) {
-    const obs = track[i];
-    const z = obs.distance - local.distance;
-    if (z < -60) continue;
-    if (z > maxDistance) break;
-    if (Math.abs(obs.lane - activeLane) > 0.51) continue;
-    if (z < bestZ) {
-      bestZ = z;
-      bestIndex = i;
-    }
-  }
-  if (bestIndex < 0) return null;
-  const [cleared] = track.splice(bestIndex, 1);
-  return cleared;
+function applyMangoCombo() {
+  local.mangoCombo = Math.max(local.mangoCombo || 0, MANGO_COMBO_DURATION);
+  local.bonusScore = (local.bonusScore || 0) + MANGO_COMBO_BONUS;
+  playSparkle([659.25, 783.99, 1046.5, 1318.51], 0.075);
+  toast('🥭 Mango Combo! Bonus points + juicy fruit streak.', 1400);
 }
 
 function checkPowerUps() {

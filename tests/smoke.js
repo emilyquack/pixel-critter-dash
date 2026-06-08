@@ -77,9 +77,11 @@ try {
   assert.match(gameJs, /berryMagnet/, 'Berry Magnet power-up should exist');
   assert.match(gameJs, /cupcakeFloat/, 'Cupcake Float power-up should exist');
   assert.match(gameJs, /floatGrace/, 'Cupcake Float should have a timed obstacle-forgiveness state');
-  assert.match(gameJs, /Mango Bloom/, 'mango pickup should have a distinct non-shield power-up identity');
-  assert.match(gameJs, /function clearNearestLaneObstacle/, 'mango pickup should clear a nearby lane obstacle instead of copying Coconut Shield');
+  assert.match(gameJs, /Mango Combo/, 'mango pickup should have a distinct score-combo identity');
+  assert.match(gameJs, /function applyMangoCombo/, 'mango pickup should use a score-combo effect instead of defensive obstacle clearing');
+  assert.match(gameJs, /bonusScore/, 'mango combo bonus should persist in the score formula');
   assert.doesNotMatch(gameJs, /Mango shield/i, 'mango pickup should not duplicate the Coconut Shield effect');
+  assert.doesNotMatch(gameJs, /clearNearestLaneObstacle|MANGO_BLOOM|Cleared the/, 'mango pickup should not clear/block obstacles like a shield');
   const gameConst = (name) => Number(gameJs.match(new RegExp(`const ${name} = (-?\\d+(?:\\.\\d+)?)`))?.[1]);
   assert.ok(gameConst('JUMP_DURATION') >= 1.22, 'jump airtime should be forgiving for depth-perception ambiguity');
   assert.equal(gameConst('SLIDE_DURATION'), 1.24, 'slide duration should match the forgiving jump duration');
