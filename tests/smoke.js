@@ -79,7 +79,7 @@ try {
   assert.match(gameJs, /floatGrace/, 'Cupcake Float should have a timed obstacle-forgiveness state');
   const gameConst = (name) => Number(gameJs.match(new RegExp(`const ${name} = (-?\\d+(?:\\.\\d+)?)`))?.[1]);
   assert.ok(gameConst('JUMP_DURATION') >= 1.22, 'jump airtime should be forgiving for depth-perception ambiguity');
-  assert.ok(gameConst('SLIDE_DURATION') >= 0.9, 'slide duration should be forgiving for depth-perception ambiguity');
+  assert.equal(gameConst('SLIDE_DURATION'), 1.24, 'slide duration should match the forgiving jump duration');
   assert.ok(gameConst('JUMP_CLEAR_DISTANCE') >= 520, 'early jump clear distance should be generous');
   assert.ok(gameConst('SLIDE_CLEAR_DISTANCE') >= 460, 'early slide clear distance should be generous');
   assert.ok(gameConst('LANE_COLLISION_TOLERANCE') <= 0.26, 'lane collision tolerance should be narrow while changing lanes');
