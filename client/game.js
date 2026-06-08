@@ -12,22 +12,22 @@ const MAX_SPEED_BOOST = 260;
 const SPEED_RAMP = 0.012;
 const LOCAL_PLAYER_SCALE = 2.35;
 const REMOTE_PLAYER_SCALE = 1.95;
-const JUMP_DURATION = 1.08;
-const SLIDE_DURATION = 0.72;
+const JUMP_DURATION = 1.24;
+const SLIDE_DURATION = 0.92;
 const JUMP_SAFE_REMAINING = 0.03;
 const SLIDE_SAFE_REMAINING = 0.03;
-const JUMP_OBSTACLE_FRONT_WINDOW = 34;
-const JUMP_OBSTACLE_BACK_WINDOW = -50;
-const SLIDE_OBSTACLE_FRONT_WINDOW = 52;
-const SLIDE_OBSTACLE_BACK_WINDOW = -76;
-// Jump obstacles should feel forgiving: one jump now clears hazards that were
-// up to ~1.35 seconds away at the starting speed, so players can hop early
-// instead of panic-jumping at the very last mango-second.
-const JUMP_CLEAR_DISTANCE = 340;
-// Slide obstacles get the same cozy treatment: if the player ducks a little
-// early, the roll still counts for nearby boba pearls instead of demanding a
-// frame-perfect last-second slide.
-const SLIDE_CLEAR_DISTANCE = 290;
+const JUMP_OBSTACLE_FRONT_WINDOW = 28;
+const JUMP_OBSTACLE_BACK_WINDOW = -36;
+const SLIDE_OBSTACLE_FRONT_WINDOW = 40;
+const SLIDE_OBSTACLE_BACK_WINDOW = -48;
+const LANE_COLLISION_TOLERANCE = 0.24;
+// Depth perception on the pseudo-3D road can be fuzzy, so timing actions are
+// intentionally very cozy: a jump clears hazards that were ~2.1s away at
+// starting speed instead of requiring last-second panic hops.
+const JUMP_CLEAR_DISTANCE = 540;
+// Same idea for sliding: ducking early should still count for nearby boba
+// pearls when the road depth is hard to read.
+const SLIDE_CLEAR_DISTANCE = 470;
 const PINEAPPLE_DASH_DURATION = 3.2;
 const PINEAPPLE_DASH_SPEED_BOOST = 120;
 const BERRY_MAGNET_DURATION = 6;
@@ -604,7 +604,7 @@ function checkCollisions() {
     const backWindow = action === 'jump' ? JUMP_OBSTACLE_BACK_WINDOW : action === 'slide' ? SLIDE_OBSTACLE_BACK_WINDOW : -40;
     if (z < backWindow) continue;
     if (z > frontWindow) break;
-    if (Math.abs(obs.lane - local.lane) > 0.31) continue;
+    if (Math.abs(obs.lane - local.lane) > LANE_COLLISION_TOLERANCE) continue;
     const timingAction = action === 'jump' || action === 'slide';
     const safe = local.dashBoost > 0 || (local.floatGrace > 0 && timingAction) || (action === 'jump' ? isJumpObstacleCleared(obs) : action === 'slide' ? isSlideObstacleCleared(obs) : false);
     if (!safe) {
@@ -776,7 +776,7 @@ function drawObstacle(x, y, s, type) {
 }
 
 function drawObstacleCue(x, y, s, action) {
-  if (s < 0.56) return;
+  if (s < 0.44) return;
   const cue = action === 'jump' ? '↑ JUMP' : action === 'slide' ? '↓ SLIDE' : '↔ MOVE';
   const bg = action === 'jump' ? '#7ed7ff' : action === 'slide' ? '#ffd36b' : '#ff9fbd';
   push(); translate(x, y - 54 * s); noStroke(); textAlign(CENTER); textSize(Math.max(10, 10 * s));
