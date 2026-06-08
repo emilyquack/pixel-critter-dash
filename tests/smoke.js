@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { buildServer } from '../server/server.js';
 
 class TestSocket {
@@ -107,6 +108,27 @@ try {
   assert.ok(gameConst('JUMP_CLEAR_DISTANCE') >= 520, 'early jump clear distance should be generous');
   assert.ok(gameConst('SLIDE_CLEAR_DISTANCE') >= 460, 'early slide clear distance should be generous');
   assert.ok(gameConst('LANE_COLLISION_TOLERANCE') <= 0.26, 'lane collision tolerance should be narrow while changing lanes');
+
+  const sandbox = {
+    window: { location: { search: '' }, addEventListener() {} },
+    URLSearchParams,
+    Date,
+    Math,
+    Infinity,
+    console,
+    WebSocket: class {},
+    document: { getElementById: () => null },
+    setInterval: () => 0,
+    clearInterval: () => {},
+    constrain: (value, min, max) => Math.max(min, Math.min(max, value)),
+    millis: () => 0
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(gameJs, sandbox);
+  const festivalKinds = vm.runInContext("buildTrack('SOLO-MANGO'); festivalEvents.map((event) => event.kind).slice(0, 8)", sandbox);
+  assert.notEqual(festivalKinds[0], 'melonRoll', 'the default/practice opening festival should no longer look melon-only');
+  assert.deepEqual(new Set(festivalKinds.slice(0, 4)), new Set(['melonRoll', 'berryBlizzard', 'cupcakeParade', 'pineappleStampede']), 'first four festival events should include every frenzy once before repeating');
+  assert.notEqual(festivalKinds[0], festivalKinds[1], 'festival events should avoid immediate repeats');
 
   const health = await fetch(httpUrl + '/health');
   assert.equal(health.status, 200, 'health endpoint should respond');

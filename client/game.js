@@ -522,6 +522,7 @@ function buildTrack(seed) {
 }
 
 function buildFestivalEvents(rand, maxDistance) {
+  const frenzyOrder = makeFestivalFrenzyOrder(rand);
   let startDistance = 1850 + rand() * 420;
   let index = 0;
   while (startDistance < maxDistance - FESTIVAL_EVENT_DISTANCE) {
@@ -532,7 +533,7 @@ function buildFestivalEvents(rand, maxDistance) {
     });
     festivalEvents.push({
       id: 'festival-' + index,
-      kind: pickFestivalFrenzyKind(rand, index),
+      kind: pickFestivalFrenzyKind(frenzyOrder, index),
       startDistance,
       endDistance: startDistance + FESTIVAL_EVENT_DISTANCE,
       lanePattern,
@@ -543,9 +544,24 @@ function buildFestivalEvents(rand, maxDistance) {
   }
 }
 
-function pickFestivalFrenzyKind(rand, index) {
-  if (FESTIVAL_FRENZY_KINDS.length === 0) return 'melonRoll';
-  return FESTIVAL_FRENZY_KINDS[(Math.floor(rand() * FESTIVAL_FRENZY_KINDS.length) + index) % FESTIVAL_FRENZY_KINDS.length];
+function makeFestivalFrenzyOrder(rand) {
+  const shuffled = shuffleFestivalFrenzyKinds(rand);
+  if (shuffled.length > 1 && shuffled[0] === 'melonRoll') shuffled.push(shuffled.shift());
+  return shuffled;
+}
+
+function shuffleFestivalFrenzyKinds(rand) {
+  const kinds = FESTIVAL_FRENZY_KINDS.slice();
+  for (let i = kinds.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [kinds[i], kinds[j]] = [kinds[j], kinds[i]];
+  }
+  return kinds;
+}
+
+function pickFestivalFrenzyKind(frenzyOrder, index) {
+  if (!frenzyOrder || frenzyOrder.length === 0) return 'melonRoll';
+  return frenzyOrder[index % frenzyOrder.length];
 }
 
 function updateGame(dt) {
