@@ -64,6 +64,19 @@ try {
   const html = await page.text();
   assert.match(html, /Pixel Critter Dash/);
   assert.match(html, /Restart round/, 'after-round restart button should be served');
+  assert.match(html, /Power-ups/, 'help card should explain the new power-ups');
+  assert.match(html, /🍓 magnet, 🧁 float/, 'help card should list the added power-ups');
+
+  const gameJs = await (await fetch(httpUrl + '/game.js')).text();
+  assert.match(gameJs, /SLIDE_CLEAR_DISTANCE/, 'slide obstacles should include distance-based forgiveness');
+  assert.match(gameJs, /function isSlideObstacleCleared/, 'slide obstacle safety should be centralized and testable');
+  assert.match(gameJs, /const PASS_THROUGH_STRUCTURES/, 'dash-through platforms, ladders, and elevation should be generated');
+  assert.match(gameJs, /const POWER_UPS/, 'helpful collectible power-ups should be defined');
+  assert.match(gameJs, /pineappleDash/, 'Pineapple Dash power-up should exist');
+  assert.match(gameJs, /coconutShield/, 'Coconut Shield power-up should exist');
+  assert.match(gameJs, /berryMagnet/, 'Berry Magnet power-up should exist');
+  assert.match(gameJs, /cupcakeFloat/, 'Cupcake Float power-up should exist');
+  assert.match(gameJs, /floatGrace/, 'Cupcake Float should have a timed obstacle-forgiveness state');
 
   const health = await fetch(httpUrl + '/health');
   assert.equal(health.status, 200, 'health endpoint should respond');

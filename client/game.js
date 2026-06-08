@@ -13,14 +13,38 @@ const SPEED_RAMP = 0.012;
 const LOCAL_PLAYER_SCALE = 2.35;
 const REMOTE_PLAYER_SCALE = 1.95;
 const JUMP_DURATION = 1.08;
-const SLIDE_DURATION = 0.58;
+const SLIDE_DURATION = 0.72;
 const JUMP_SAFE_REMAINING = 0.03;
+const SLIDE_SAFE_REMAINING = 0.03;
 const JUMP_OBSTACLE_FRONT_WINDOW = 34;
 const JUMP_OBSTACLE_BACK_WINDOW = -50;
+const SLIDE_OBSTACLE_FRONT_WINDOW = 52;
+const SLIDE_OBSTACLE_BACK_WINDOW = -76;
 // Jump obstacles should feel forgiving: one jump now clears hazards that were
 // up to ~1.35 seconds away at the starting speed, so players can hop early
 // instead of panic-jumping at the very last mango-second.
 const JUMP_CLEAR_DISTANCE = 340;
+// Slide obstacles get the same cozy treatment: if the player ducks a little
+// early, the roll still counts for nearby boba pearls instead of demanding a
+// frame-perfect last-second slide.
+const SLIDE_CLEAR_DISTANCE = 290;
+const PINEAPPLE_DASH_DURATION = 3.2;
+const PINEAPPLE_DASH_SPEED_BOOST = 120;
+const BERRY_MAGNET_DURATION = 6;
+const CUPCAKE_FLOAT_DURATION = 4.5;
+
+const PASS_THROUGH_STRUCTURES = {
+  platform: { label: 'flower platform', color: '#ffcf7f' },
+  ladder: { label: 'ribbon ladder', color: '#c68b55' },
+  hill: { label: 'minty elevation', color: '#8de0a7' }
+};
+
+const POWER_UPS = {
+  coconutShield: { label: 'Coconut Shield', emoji: '🥥', color: '#f5f1df' },
+  pineappleDash: { label: 'Pineapple Dash', emoji: '🍍', color: '#ffd75f' },
+  berryMagnet: { label: 'Berry Magnet', emoji: '🍓', color: '#ff7aa8' },
+  cupcakeFloat: { label: 'Cupcake Float', emoji: '🧁', color: '#c7b6ff' }
+};
 
 const ANIMALS = {
   bunny: { label: 'Ribbon Bunny', body: '#fff3f7', belly: '#ffd1df', ear: '#ff9fbd', cheek: '#ff8fb4', accent: '#7ed7ff' },
@@ -54,7 +78,10 @@ let lastSnapshotAt = 0;
 let lastSendAt = 0;
 let track = [];
 let fruits = [];
+let powerUps = [];
+let passThroughStructures = [];
 let collectedFruit = new Set();
+let collectedPowerUps = new Set();
 let hitCooldown = 0;
 let inviteWasCopied = false;
 
@@ -88,6 +115,9 @@ function makeDefaultPlayer(id, name, animal) {
     jumpTime: 0,
     jumpClearUntil: -Infinity,
     slideTime: 0,
+    slideClearUntil: -Infinity,
+    dashBoost: 0,
+    floatGrace: 0,
     laneCooldown: 0,
     wobble: 0,
     shield: 0,
@@ -353,10 +383,14 @@ function resetRace(seed) {
   local.jumpTime = 0;
   local.jumpClearUntil = -Infinity;
   local.slideTime = 0;
+  local.slideClearUntil = -Infinity;
+  local.dashBoost = 0;
+  local.floatGrace = 0;
   local.laneCooldown = 0;
   local.shield = 0;
   local.magnet = 0;
   collectedFruit.clear();
+  collectedPowerUps.clear();
   hitCooldown = 0;
   buildTrack(roomSeed);
   updateRoundEndUI();
@@ -406,13 +440,36 @@ function updateRoundEndUI() {
 function buildTrack(seed) {
   const rand = mulberry32(hashSeed(seed));
   const obstacleTypes = Object.keys(OBSTACLES);
+  const structureTypes = Object.keys(PASS_THROUGH_STRUCTURES);
+  const powerKinds = Object.keys(POWER_UPS);
   track = [];
   fruits = [];
+  powerUps = [];
+  passThroughStructures = [];
   let d = 430;
   for (let i = 0; i < 240; i++) {
     const lane = Math.floor(rand() * LANE_COUNT);
     const type = obstacleTypes[Math.floor(rand() * obstacleTypes.length)];
     track.push({ id: 'o' + i, distance: d, lane, type });
+
+    if (i % 3 === 0) {
+      passThroughStructures.push({
+        id: 's' + i,
+        distance: d + 70 + rand() * 180,
+        lane: Math.floor(rand() * LANE_COUNT),
+        type: structureTypes[Math.floor(rand() * structureTypes.length)]
+      });
+    }
+
+    if (i > 2 && i % 10 === 4) {
+      powerUps.push({
+        id: 'p' + i,
+        distance: d + 95 + rand() * 90,
+        lane: Math.floor(rand() * LANE_COUNT),
+        kind: powerKinds[Math.floor(rand() * powerKinds.length)]
+      });
+    }
+
     const fruitLane = Math.floor(rand() * LANE_COUNT);
     fruits.push({ id: 'f' + i, distance: d + 150 + rand() * 110, lane: fruitLane, kind: rand() > 0.82 ? 'mango' : 'berry' });
     d += 300 + rand() * 220;
@@ -426,12 +483,14 @@ function updateGame(dt) {
     return;
   }
 
-  const speed = START_SPEED + Math.min(MAX_SPEED_BOOST, local.distance * SPEED_RAMP);
+  const speed = START_SPEED + Math.min(MAX_SPEED_BOOST, local.distance * SPEED_RAMP) + (local.dashBoost > 0 ? PINEAPPLE_DASH_SPEED_BOOST : 0);
   local.distance += speed * dt;
-  local.score = Math.floor(local.distance / 6) + collectedFruit.size * 25;
+  local.score = Math.floor(local.distance / 6) + collectedFruit.size * 25 + collectedPowerUps.size * 45;
   local.laneCooldown = Math.max(0, local.laneCooldown - dt);
   local.jumpTime = Math.max(0, local.jumpTime - dt);
   local.slideTime = Math.max(0, local.slideTime - dt);
+  local.dashBoost = Math.max(0, local.dashBoost - dt);
+  local.floatGrace = Math.max(0, local.floatGrace - dt);
   local.shield = Math.max(0, local.shield - dt);
   local.magnet = Math.max(0, local.magnet - dt);
   hitCooldown = Math.max(0, hitCooldown - dt);
@@ -442,14 +501,14 @@ function updateGame(dt) {
     startJump();
   }
   if ((input.slideTap || input.down) && local.jumpTime <= 0.02) {
-    local.slideTime = SLIDE_DURATION;
-    if (input.slideTap) playTone(196.0, audio.ctx?.currentTime || 0, 0.07, 'triangle', 0.035, audio.sfxGain);
+    startSlide();
   }
 
   local.lane += (local.targetLane - local.lane) * Math.min(1, dt * 13);
   local.wobble += dt * (local.slideTime > 0 ? 18 : 10);
 
   checkPickups();
+  checkPowerUps();
   checkCollisions();
 }
 
@@ -464,6 +523,12 @@ function startJump() {
   local.jumpTime = JUMP_DURATION;
   local.jumpClearUntil = Math.max(local.jumpClearUntil || -Infinity, local.distance + JUMP_CLEAR_DISTANCE);
   playSparkle([392.0, 523.25], 0.025);
+}
+
+function startSlide() {
+  local.slideTime = SLIDE_DURATION;
+  local.slideClearUntil = Math.max(local.slideClearUntil || -Infinity, local.distance + SLIDE_CLEAR_DISTANCE);
+  playTone(196.0, audio.ctx?.currentTime || 0, 0.07, 'triangle', 0.035, audio.sfxGain);
 }
 
 function checkPickups() {
@@ -489,17 +554,59 @@ function checkPickups() {
   }
 }
 
+function checkPowerUps() {
+  for (const power of powerUps) {
+    if (collectedPowerUps.has(power.id)) continue;
+    const z = power.distance - local.distance;
+    const laneNear = Math.abs(power.lane - local.lane) < (local.magnet > 0 ? 1.25 : 0.42);
+    if (z < 52 && z > -46 && laneNear) {
+      collectedPowerUps.add(power.id);
+      applyPowerUp(power.kind);
+    }
+  }
+}
+
+function applyPowerUp(kind) {
+  if (kind === 'coconutShield') {
+    local.shield = Math.max(local.shield, 8);
+    playSparkle([392.0, 523.25, 659.25], 0.07);
+    toast('🥥 Coconut Shield! Your next bonk is blocked.', 1300);
+    return;
+  }
+  if (kind === 'pineappleDash') {
+    local.dashBoost = Math.max(local.dashBoost, PINEAPPLE_DASH_DURATION);
+    hitCooldown = Math.max(hitCooldown, PINEAPPLE_DASH_DURATION);
+    playSparkle([523.25, 659.25, 783.99, 1046.5], 0.075);
+    toast('🍍 Pineapple Dash! Zoom through obstacles for a moment!', 1400);
+    return;
+  }
+  if (kind === 'berryMagnet') {
+    local.magnet = Math.max(local.magnet, BERRY_MAGNET_DURATION);
+    playSparkle([783.99, 659.25, 523.25], 0.07);
+    toast('🍓 Berry Magnet! Fruit and power-ups tug toward you.', 1400);
+    return;
+  }
+  if (kind === 'cupcakeFloat') {
+    local.floatGrace = Math.max(local.floatGrace, CUPCAKE_FLOAT_DURATION);
+    local.jumpClearUntil = Math.max(local.jumpClearUntil || -Infinity, local.distance + JUMP_CLEAR_DISTANCE * 1.15);
+    local.slideClearUntil = Math.max(local.slideClearUntil || -Infinity, local.distance + SLIDE_CLEAR_DISTANCE * 1.15);
+    playSparkle([659.25, 880.0, 1046.5], 0.07);
+    toast('🧁 Cupcake Float! Jump/slide hazards get extra squishy timing.', 1500);
+  }
+}
+
 function checkCollisions() {
   if (hitCooldown > 0) return;
   for (const obs of track) {
     const z = obs.distance - local.distance;
     const action = OBSTACLES[obs.type].action;
-    const frontWindow = action === 'jump' ? JUMP_OBSTACLE_FRONT_WINDOW : 42;
-    const backWindow = action === 'jump' ? JUMP_OBSTACLE_BACK_WINDOW : -40;
+    const frontWindow = action === 'jump' ? JUMP_OBSTACLE_FRONT_WINDOW : action === 'slide' ? SLIDE_OBSTACLE_FRONT_WINDOW : 42;
+    const backWindow = action === 'jump' ? JUMP_OBSTACLE_BACK_WINDOW : action === 'slide' ? SLIDE_OBSTACLE_BACK_WINDOW : -40;
     if (z < backWindow) continue;
     if (z > frontWindow) break;
     if (Math.abs(obs.lane - local.lane) > 0.31) continue;
-    const safe = action === 'jump' ? isJumpObstacleCleared(obs) : action === 'slide' ? local.slideTime > 0.05 : false;
+    const timingAction = action === 'jump' || action === 'slide';
+    const safe = local.dashBoost > 0 || (local.floatGrace > 0 && timingAction) || (action === 'jump' ? isJumpObstacleCleared(obs) : action === 'slide' ? isSlideObstacleCleared(obs) : false);
     if (!safe) {
       if (local.shield > 0) {
         local.shield = 0;
@@ -524,6 +631,10 @@ function isJumpObstacleCleared(obs) {
   return local.jumpTime > JUMP_SAFE_REMAINING || obs.distance <= (local.jumpClearUntil || -Infinity);
 }
 
+function isSlideObstacleCleared(obs) {
+  return local.slideTime > SLIDE_SAFE_REMAINING || obs.distance <= (local.slideClearUntil || -Infinity);
+}
+
 function maybeSendState() {
   if (roomCode === 'SOLO' || roomState === 'menu') return;
   const now = Date.now();
@@ -539,6 +650,8 @@ function maybeSendState() {
       alive: local.alive,
       jumpTime: Math.round(local.jumpTime * 100) / 100,
       slideTime: Math.round(local.slideTime * 100) / 100,
+      dashBoost: Math.round(local.dashBoost * 10) / 10,
+      floatGrace: Math.round(local.floatGrace * 10) / 10,
       shield: Math.round(local.shield * 10) / 10,
       magnet: Math.round(local.magnet * 10) / 10
     }
@@ -626,11 +739,18 @@ function worldPoint(distance, lane) {
 function drawTrackObjects() {
   const visibleObstacles = track.filter(o => o.distance - local.distance > -80 && o.distance - local.distance < WORLD_VIEW_DISTANCE);
   const visibleFruits = fruits.filter(f => !collectedFruit.has(f.id) && f.distance - local.distance > -60 && f.distance - local.distance < WORLD_VIEW_DISTANCE);
-  const objects = visibleObstacles.map(o => ({ ...o, objectType: 'obstacle' })).concat(visibleFruits.map(f => ({ ...f, objectType: 'fruit' })));
+  const visiblePowerUps = powerUps.filter(p => !collectedPowerUps.has(p.id) && p.distance - local.distance > -60 && p.distance - local.distance < WORLD_VIEW_DISTANCE);
+  const visibleStructures = passThroughStructures.filter(s => s.distance - local.distance > -120 && s.distance - local.distance < WORLD_VIEW_DISTANCE);
+  const objects = visibleStructures.map(s => ({ ...s, objectType: 'structure' }))
+    .concat(visibleObstacles.map(o => ({ ...o, objectType: 'obstacle' })))
+    .concat(visibleFruits.map(f => ({ ...f, objectType: 'fruit' })))
+    .concat(visiblePowerUps.map(p => ({ ...p, objectType: 'power' })));
   objects.sort((a, b) => b.distance - a.distance);
   for (const obj of objects) {
     const pt = worldPoint(obj.distance, obj.lane);
     if (obj.objectType === 'fruit') drawFruit(pt.x, pt.y, pt.scale, obj.kind);
+    else if (obj.objectType === 'power') drawPowerUp(pt.x, pt.y, pt.scale, obj.kind);
+    else if (obj.objectType === 'structure') drawPassThroughStructure(pt.x, pt.y, pt.scale, obj.type);
     else drawObstacle(pt.x, pt.y, pt.scale, obj.type);
   }
 }
@@ -672,6 +792,45 @@ function drawFruit(x, y, s, kind) {
     fill('#ffb33f'); ellipse(0, 0, 24, 30); fill('#ffdc58'); ellipse(-4, -4, 14, 19); fill('#68bd55'); ellipse(9, -16, 12, 6);
   } else {
     fill('#ff6fa8'); ellipse(0, 0, 18, 18); fill('#fff7'); ellipse(-4, -5, 5, 5); fill('#68bd55'); rect(-2, -15, 4, 9, 2);
+  }
+  pop();
+}
+
+function drawPowerUp(x, y, s, kind) {
+  const def = POWER_UPS[kind] || POWER_UPS.coconutShield;
+  push(); translate(x, y - 20 * s); scale(s); noStroke(); textAlign(CENTER); textSize(19);
+  fill('#fff7d8dd'); ellipse(0, 0, 42, 42);
+  fill(def.color); ellipse(0, 0, 31, 31);
+  fill('#2f2a45'); text(def.emoji, 0, 7);
+  fill('#ffffffaa'); rect(-13, -17, 12, 4, 2);
+  pop();
+  if (s > 0.6) drawPowerCue(x, y, s, def.label);
+}
+
+function drawPowerCue(x, y, s, label) {
+  push(); translate(x, y - 74 * s); noStroke(); textAlign(CENTER); textSize(Math.max(9, 9 * s));
+  fill('#2f2a45cc'); rect(-46 * s, -15 * s, 92 * s, 18 * s, 9 * s);
+  fill('#fff7d8'); text(label, 0, -3 * s);
+  pop();
+}
+
+function drawPassThroughStructure(x, y, s, type) {
+  const def = PASS_THROUGH_STRUCTURES[type] || PASS_THROUGH_STRUCTURES.platform;
+  push(); translate(x, y + 8 * s); scale(s); noStroke();
+  if (type === 'platform') {
+    fill('#ffffff80'); ellipse(0, 8, 80, 16);
+    fill(def.color); rect(-44, -5, 88, 12, 6);
+    fill('#ff9fbd'); rect(-34, -15, 10, 10, 4); fill('#fff2a8'); rect(-8, -18, 11, 11, 4); fill('#9ee8b3'); rect(22, -14, 10, 10, 4);
+  } else if (type === 'ladder') {
+    fill('#ffffff66'); rect(-20, -36, 40, 70, 10);
+    stroke(def.color); strokeWeight(5); line(-15, -34, -15, 34); line(15, -34, 15, 34);
+    stroke('#ffe3ad'); strokeWeight(4); for (let yy = -25; yy <= 25; yy += 13) line(-15, yy, 15, yy);
+    noStroke(); fill('#ff9fbd'); rect(-23, -39, 46, 8, 4);
+  } else {
+    fill('#ffffff66'); ellipse(0, 18, 90, 18);
+    fill(def.color); ellipse(0, 4, 86, 38);
+    fill('#b9f3d2'); ellipse(-18, -8, 34, 22); fill('#e4ff9f'); ellipse(18, -9, 34, 21);
+    fill('#fff7d8aa'); rect(-28, -3, 56, 6, 3);
   }
   pop();
 }
@@ -719,6 +878,14 @@ function drawAnimal(x, y, s, p, isMe) {
   if (p.shield > 0) {
     noFill(); stroke('#ffdf74'); strokeWeight(2); ellipse(0, -8, 50, 58); noStroke();
     fill('#fff2a8'); rect(-2, -39, 4, 4, 1); rect(21, -9, 4, 4, 1); rect(-24, -8, 4, 4, 1);
+  }
+  if (p.dashBoost > 0) {
+    noFill(); stroke('#ffd75f'); strokeWeight(2); ellipse(0, -7, 62, 42); noStroke();
+    fill('#ff9fbd'); rect(-35, -11, 10, 3, 1); fill('#7ed7ff'); rect(26, -20, 12, 3, 1); fill('#fff2a8'); rect(-31, 8, 13, 3, 1);
+  }
+  if (p.floatGrace > 0) {
+    noFill(); stroke('#c7b6ff'); strokeWeight(2); ellipse(0, -11, 58, 66); noStroke();
+    fill('#fff7d8'); rect(-18, -43, 5, 5, 2); rect(15, -40, 5, 5, 2); rect(24, -2, 4, 4, 2);
   }
   if (isMe) drawTinyCrown();
   pop();

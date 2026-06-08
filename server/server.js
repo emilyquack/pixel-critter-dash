@@ -170,6 +170,8 @@ function handleClientMessage(ws, meta, msg) {
     player.alive = Boolean(state.alive);
     player.jumpTime = clampNumber(state.jumpTime, 0, 2, 0);
     player.slideTime = clampNumber(state.slideTime, 0, 2, 0);
+    player.dashBoost = clampNumber(state.dashBoost, 0, 10, 0);
+    player.floatGrace = clampNumber(state.floatGrace, 0, 10, 0);
     player.shield = clampNumber(state.shield, 0, 20, 0);
     player.magnet = clampNumber(state.magnet, 0, 20, 0);
     player.lastSeen = Date.now();
@@ -228,6 +230,8 @@ function createPlayer(id, name, animal, host = false) {
     alive: true,
     jumpTime: 0,
     slideTime: 0,
+    dashBoost: 0,
+    floatGrace: 0,
     shield: 0,
     magnet: 0,
     joinedAt: Date.now(),
@@ -243,6 +247,8 @@ function resetPlayerRaceState(player) {
   player.alive = true;
   player.jumpTime = 0;
   player.slideTime = 0;
+  player.dashBoost = 0;
+  player.floatGrace = 0;
   player.shield = 0;
   player.magnet = 0;
   player.lastSeen = Date.now();
@@ -268,6 +274,8 @@ function serializeRoom(room) {
       alive: p.alive,
       jumpTime: p.jumpTime,
       slideTime: p.slideTime,
+      dashBoost: p.dashBoost,
+      floatGrace: p.floatGrace,
       shield: p.shield,
       magnet: p.magnet,
       lastSeen: p.lastSeen
