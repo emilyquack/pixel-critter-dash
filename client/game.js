@@ -32,6 +32,7 @@ const PINEAPPLE_DASH_DURATION = 3.2;
 const PINEAPPLE_DASH_SPEED_BOOST = 120;
 const BERRY_MAGNET_DURATION = 6;
 const CUPCAKE_FLOAT_DURATION = 4.5;
+const MANGO_BLOOM_CLEAR_DISTANCE = 700;
 
 const PASS_THROUGH_STRUCTURES = {
   platform: { label: 'flower platform', color: '#ffcf7f' },
@@ -540,9 +541,14 @@ function checkPickups() {
       collectedFruit.add(fruit.id);
       local.score += fruit.kind === 'mango' ? 80 : 25;
       if (fruit.kind === 'mango') {
-        local.shield = Math.max(local.shield, 5);
-        playSparkle([659.25, 783.99, 1046.5], 0.07);
-        toast('Mango shield! One bonk is safe ✨', 1200);
+        const cleared = clearNearestLaneObstacle();
+        playSparkle([659.25, 783.99, 1046.5, 1318.51], 0.075);
+        if (cleared) {
+          toast(`🥭 Mango Bloom! Cleared the ${OBSTACLES[cleared.type]?.label || 'obstacle'} ahead.`, 1400);
+        } else {
+          local.score += 45;
+          toast('🥭 Mango Bloom! Clear path bonus!', 1200);
+        }
       } else if (collectedFruit.size % 8 === 0) {
         local.magnet = 4;
         playSparkle([523.25, 659.25, 987.77], 0.06);
@@ -552,6 +558,26 @@ function checkPickups() {
       }
     }
   }
+}
+
+function clearNearestLaneObstacle(maxDistance = MANGO_BLOOM_CLEAR_DISTANCE) {
+  const activeLane = Math.round(local.targetLane ?? local.lane);
+  let bestIndex = -1;
+  let bestZ = Infinity;
+  for (let i = 0; i < track.length; i++) {
+    const obs = track[i];
+    const z = obs.distance - local.distance;
+    if (z < -60) continue;
+    if (z > maxDistance) break;
+    if (Math.abs(obs.lane - activeLane) > 0.51) continue;
+    if (z < bestZ) {
+      bestZ = z;
+      bestIndex = i;
+    }
+  }
+  if (bestIndex < 0) return null;
+  const [cleared] = track.splice(bestIndex, 1);
+  return cleared;
 }
 
 function checkPowerUps() {
